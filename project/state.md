@@ -5,8 +5,9 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 
 ## Active Work
 
-- No active plugin development yet
-- Aliases Hub plugin planned as first build (details TBD)
+- Aliases Hub v0.1.0 implemented on `feature/aliases-hub` branch (worktree at `.worktrees/aliases-hub`)
+- Integration tested — plugin loads, all commands work, vault-wide alias propagation verified
+- Pending: merge to main, session handoff
 
 ## Latest Handoff
 
@@ -17,20 +18,26 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 - 2026-04-02: Project initialized; vault copy at `./MakoNP/` for plugin dev
 - 2026-04-02: Installed `obsidian-skills` + `superpowers` as project-level Claude Code plugins (project scope only, `.claude/settings.json`)
 - 2026-04-02: Handoff protocol established (`project/handoffs/`, `project/state.md`)
-- 2026-04-02: `.gitignore` deny-all strategy — allowlist: `.gitignore`, `CLAUDE.md`, `project/`
+- 2026-04-02: `.gitignore` deny-all strategy — allowlist: `.gitignore`, `CLAUDE.md`, `project/`, `plugins/`, `changelog/`
 - 2026-04-02: Changelog system added (`project/changelog/CHANGELOG.md`, 4–8 item rolling window, monthly archive)
 - 2026-04-02: End-of-session git commit rules added to CLAUDE.md
+- 2026-04-02: Planning directory structure: `project/planning/{requirements,designs,plans}/` with `0001-` indexing
+- 2026-04-02: Aliases Hub design approved — split strategy: Editor API for live scope, cache-first vault.process for bulk scope
 
 ## Architecture Decisions
 
-_(none yet)_
+- **Aliases Hub split strategy**: Editor API (`editor.replaceRange`) for cursor/file scope (instant, undo-friendly); cache-first pre-filtering + `vault.process()` for folder/vault scope (performance for 10k+ vaults). Shared pure pipeline for decision logic.
+- **Plugin worktree convention**: `.worktrees/` directory for isolated feature branches. Already gitignored by deny-all policy.
+- **Obsidian API patterns**: Use `parseFrontMatterAliases` for alias extraction, `metadataCache` for all lookups (no raw file reads), `vault.process()` for atomic writes.
 
 ## Known Issues / Blockers
 
-_(none yet)_
+- `isInsideInlineCode` improvements noted in code review — edge cases with nested backtick patterns may still exist (low risk, current impl handles common cases)
+- Settings textarea saves on every keystroke (debouncing would be better but not critical for v1)
+- `obsidian: "latest"` in package.json should be pinned for reproducibility
 
 ## Plugin Status
 
 | Plugin | Status | Location | Notes |
 |--------|--------|----------|-------|
-| Aliases Hub | Not started | — | First plugin, spec TBD |
+| Aliases Hub | v0.1.0 functional | `plugins/aliases-hub/` | On `feature/aliases-hub` branch, 28 tests passing |

@@ -1,10 +1,7 @@
 # Changelog
 
-- 2026-04-02: Fix inline code detection, vault writer content checks, strict mode, folder command — isInsideInlineCode now walks line for all spans; applyRewrites checks original content; tsconfig uses strict:true; add update-links-in-folder palette command
-- 2026-04-02: Wire commands and context menus — 3 palette commands (cursor/file/vault) and 2 context menus (editor/folder) in main.ts
-- 2026-04-02: Add alias resolver — `resolveAlias` wraps metadataCache lookup and frontmatter alias extraction
-- 2026-04-02: Add link filter — `isInsideSection`, `isInsideInlineCode`, `isEmbed` with 12 passing TDD tests; Obsidian-typed helpers in same module
-- 2026-04-02: Tighten `SkipReason` to named union type; add 6 direct `extractLinkPath` tests (15 total passing)
-- 2026-04-02: Add core pipeline — `decideRewrite` and `extractLinkPath` with 9 passing TDD tests
-- 2026-04-02: Add settings module — `AliasHubSettings` interface, `AliasHubSettingTab`, overwrite toggle and ignored folders controls
-- 2026-04-02: Scaffold aliases-hub plugin — build tooling, tsconfig, eslint, minimal main.ts compiles and lints clean
+- 2026-04-02: Integration test passed — plugin loads, all 4 commands work, vault-wide alias propagation verified
+- 2026-04-02: Fix inline code detection, vault writer content checks, strict mode, folder command
+- 2026-04-02: Wire commands and context menus in main.ts
+- 2026-04-02: Add vault writer with cache pre-filtering and bulk execution
+- 2026-04-02: Add editor writer for cursor and file scope operations
