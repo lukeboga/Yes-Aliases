@@ -113,8 +113,9 @@ function applyRewrites(content: string, planned: PlannedRewrite[]): { content: s
 		const actual = result.slice(rewrite.startOffset, rewrite.endOffset);
 		if (actual !== rewrite.original) continue;
 
-		if (isInsideInlineCode(result, rewrite.startOffset, rewrite.endOffset)) continue;
-		if (isEmbed(result, rewrite.startOffset)) continue;
+		// Check against original content, not mutated result
+		if (isInsideInlineCode(content, rewrite.startOffset, rewrite.endOffset)) continue;
+		if (isEmbed(content, rewrite.startOffset)) continue;
 
 		result =
 			result.slice(0, rewrite.startOffset) +

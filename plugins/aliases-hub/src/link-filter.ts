@@ -24,8 +24,8 @@ export function isInsideSection(
 
 /**
  * Check whether a link at the given offsets sits inside an inline code span.
- * Scans backward from linkStart for an opening backtick sequence and forward
- * from linkEnd for a matching closing sequence, both on the same line.
+ * Walks the line to find all backtick-delimited code spans and checks if
+ * the link falls inside any of them.
  */
 export function isInsideInlineCode(
 	content: string,
@@ -35,16 +35,43 @@ export function isInsideInlineCode(
 	const lineStart = content.lastIndexOf("\n", linkStart - 1) + 1;
 	const lineEnd = content.indexOf("\n", linkEnd);
 	const effectiveLineEnd = lineEnd === -1 ? content.length : lineEnd;
+	const line = content.slice(lineStart, effectiveLineEnd);
 
-	const before = content.slice(lineStart, linkStart);
-	const after = content.slice(linkEnd, effectiveLineEnd);
+	const linkRelStart = linkStart - lineStart;
+	const linkRelEnd = linkEnd - lineStart;
 
-	const openMatch = before.match(/(`+)$/);
-	if (!openMatch) return false;
+	let i = 0;
+	while (i < line.length) {
+		if (line[i] !== "`") {
+			i++;
+			continue;
+		}
 
-	const backtickLen = openMatch[1]!.length;
-	const closePattern = new RegExp(`^\`{${backtickLen}}`);
-	return closePattern.test(after);
+		// Count opening backticks
+		let backtickLen = 0;
+		while (i + backtickLen < line.length && line[i + backtickLen] === "`") {
+			backtickLen++;
+		}
+
+		const spanStart = i + backtickLen;
+		i = spanStart;
+
+		// Find matching closing backticks of same length
+		const closingPattern = "`".repeat(backtickLen);
+		const closeIndex = line.indexOf(closingPattern, i);
+		if (closeIndex === -1) break; // Unclosed — no more spans on this line
+
+		const spanEnd = closeIndex;
+
+		// Check if link overlaps this code span
+		if (linkRelStart >= spanStart && linkRelEnd <= spanEnd) {
+			return true;
+		}
+
+		i = closeIndex + backtickLen;
+	}
+
+	return false;
 }
 
 /**

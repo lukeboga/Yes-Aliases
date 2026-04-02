@@ -64,6 +64,13 @@ describe("isInsideInlineCode", () => {
 		const linkEnd = 14;
 		expect(isInsideInlineCode(content, linkStart, linkEnd)).toBe(false);
 	});
+
+	it("detects link inside backticks with surrounding text", () => {
+		const content = "text `some text [[link]] more text` end";
+		const linkStart = 17;
+		const linkEnd = 25;
+		expect(isInsideInlineCode(content, linkStart, linkEnd)).toBe(true);
+	});
 });
 
 describe("isEmbed", () => {

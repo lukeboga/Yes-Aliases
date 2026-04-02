@@ -88,6 +88,33 @@ export default class AliasHubPlugin extends Plugin {
 				}
 			},
 		});
+
+		this.addCommand({
+			id: "update-links-in-folder",
+			name: "Update all links in current folder",
+			callback: async () => {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (!activeFile?.parent) {
+					new Notice("No active file");
+					return;
+				}
+				const folder = activeFile.parent;
+				const stats = await updateLinksInFolder(
+					this.app,
+					folder,
+					this.settings,
+				);
+				if (stats.updated === 0) {
+					new Notice(
+						`No links to update in ${folder.name}`,
+					);
+				} else {
+					new Notice(
+						`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
+					);
+				}
+			},
+		});
 	}
 
 	private registerContextMenus(): void {
