@@ -1,3 +1,7 @@
 *
 !.gitignore
 !CLAUDE.md
+!project/
+!project/**
+!changelog/
+!changelog/**
