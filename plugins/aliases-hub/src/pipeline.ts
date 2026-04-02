@@ -12,8 +12,10 @@ export interface LinkInput {
 	overwriteExisting: boolean;
 }
 
+export type SkipReason = "no-alias" | "already-correct" | "has-display-text";
+
 export type RewriteDecision =
-	| { action: "skip"; reason: string }
+	| { action: "skip"; reason: SkipReason }
 	| { action: "rewrite"; newText: string };
 
 /**

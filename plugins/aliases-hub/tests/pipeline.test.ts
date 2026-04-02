@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRewrite, type LinkInput } from "../src/pipeline";
+import { decideRewrite, extractLinkPath, type LinkInput } from "../src/pipeline";
 
 function makeInput(overrides: Partial<LinkInput> = {}): LinkInput {
 	return {
@@ -116,5 +116,31 @@ describe("decideRewrite", () => {
 			action: "rewrite",
 			newText: "[[folder/some-file|My Alias]]",
 		});
+	});
+});
+
+describe("extractLinkPath", () => {
+	it("returns the file name for a bare link", () => {
+		expect(extractLinkPath("[[file]]")).toBe("file");
+	});
+
+	it("includes heading subpath", () => {
+		expect(extractLinkPath("[[file#heading]]")).toBe("file#heading");
+	});
+
+	it("includes block reference subpath", () => {
+		expect(extractLinkPath("[[file#^block]]")).toBe("file#^block");
+	});
+
+	it("strips display text", () => {
+		expect(extractLinkPath("[[file|Display]]")).toBe("file");
+	});
+
+	it("includes subpath and strips display text", () => {
+		expect(extractLinkPath("[[file#heading|Display]]")).toBe("file#heading");
+	});
+
+	it("handles folder paths", () => {
+		expect(extractLinkPath("[[folder/file]]")).toBe("folder/file");
 	});
 });
