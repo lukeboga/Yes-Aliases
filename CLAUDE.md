@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Development repo for the **MakoNP** Obsidian vault. The vault at `./MakoNP/` is a copy of a live vault used for plugin development. The goal is to create focused Obsidian plugins that serve the vault's PKM workflow, including its custom note-tagging system (ntags), task management, bookmarks, events, and Obsidian Bases integration.
+Development repo for the **MakoNP** Obsidian vault. The vault at `./MakoNP-Test/` is a testing clone of the live vault used for plugin development. The goal is to create focused Obsidian plugins that serve the vault's PKM workflow, including its custom note-tagging system (ntags), task management, bookmarks, events, and Obsidian Bases integration.
 
 ### Planned Plugins
 
@@ -18,10 +18,10 @@ Development repo for the **MakoNP** Obsidian vault. The vault at `./MakoNP/` is 
 - `obsidian-skills` (kepano) — reference for Obsidian plugin patterns
 - `superpowers` (obra) — reference for advanced plugin capabilities
 
-## Vault Structure (`./MakoNP/`)
+## Vault Structure (`./MakoNP-Test/`)
 
 ```
-MakoNP/
+MakoNP-Test/
   notes/          # All notes (timestamped + daily notes)
   ntag/
     type/         # NTag type definitions (%Note, %Task/Basic, etc.)
@@ -80,13 +80,20 @@ plugin-name/
   src/
     main.ts       # Plugin entry point (extends Plugin)
   manifest.json   # Plugin metadata (id, name, version, minAppVersion)
+  install.mjs     # Copies built files to build/ and dev vault
   package.json
   tsconfig.json
-  esbuild.config.mjs  # or rollup.config.js
+  esbuild.config.mjs
 ```
 
-To install a dev plugin into the vault, symlink or copy the built output to:
-`./MakoNP/.obsidian/plugins/<plugin-id>/`
+### Build & Install
+
+`npm run install:vault` (from a plugin directory) does three things:
+1. Type-checks and bundles the plugin (`tsc` + `esbuild`)
+2. Copies `main.js` + `manifest.json` to `build/<plugin-id>/` — portable output for any vault
+3. Copies the same files to `MakoNP-Test/.obsidian/plugins/<plugin-id>/` (dev vault)
+
+To install in a live vault, copy `build/<plugin-id>/` into `<vault>/.obsidian/plugins/<plugin-id>/`.
 
 Each plugin needs at minimum: `manifest.json`, `main.js`, and optionally `styles.css`.
 
@@ -95,8 +102,9 @@ Each plugin needs at minimum: `manifest.json`, `main.js`, and optionally `styles
 ```sh
 cd plugins/<plugin-name>
 npm install
-npm run dev    # watch mode
-npm run build  # production build
+npm run dev           # watch mode
+npm run build         # production build (type-check + bundle)
+npm run install:vault # build + copy to build/ and dev vault
 ```
 
 ## Handoff Protocol

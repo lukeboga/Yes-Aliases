@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, debounce, PluginSettingTab, Setting } from "obsidian";
 import type AliasHubPlugin from "./main";
 
 /** Configuration options for the Alias Hub plugin. */
@@ -50,13 +50,15 @@ export class AliasHubSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("_meta\ntemplates")
 					.setValue(this.plugin.settings.ignoredFolders.join("\n"))
-					.onChange(async (value) => {
-						this.plugin.settings.ignoredFolders = value
-							.split("\n")
-							.map((s) => s.trim())
-							.filter((s) => s.length > 0);
-						await this.plugin.saveSettings();
-					}),
+					.onChange(
+						debounce(async (value: string) => {
+							this.plugin.settings.ignoredFolders = value
+								.split("\n")
+								.map((s) => s.trim())
+								.filter((s) => s.length > 0);
+							await this.plugin.saveSettings();
+						}, 500, true),
+					),
 			);
 	}
 }

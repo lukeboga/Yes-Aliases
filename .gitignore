@@ -7,3 +7,5 @@
 !changelog/**
 !plugins/
 !plugins/**
+!build/
+!build/**

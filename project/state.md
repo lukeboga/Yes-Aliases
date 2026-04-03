@@ -5,16 +5,17 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 
 ## Active Work
 
-- Aliases Hub v0.1.0 merged to main, 28 tests passing
-- Next: fix type issues flagged in code review, package plugin for vault installation
+- Aliases Hub v0.1.0 complete and packaged, 28 tests passing
+- Build workflow: `npm run install:vault` → `build/aliases-hub/` + dev vault
+- Next: brainstorm/plan backlink alias propagation feature (auto-update links when new note gets an alias)
 
 ## Latest Handoff
 
-`project/handoffs/2026-04-03-001.md`
+`project/handoffs/2026-04-03-002.md`
 
 ## Decisions Log
 
-- 2026-04-02: Project initialized; vault copy at `./MakoNP/` for plugin dev
+- 2026-04-02: Project initialized; test vault at `./MakoNP-Test/` for plugin dev
 - 2026-04-02: Installed `obsidian-skills` + `superpowers` as project-level Claude Code plugins (project scope only, `.claude/settings.json`)
 - 2026-04-02: Handoff protocol established (`project/handoffs/`, `project/state.md`)
 - 2026-04-02: `.gitignore` deny-all strategy — allowlist: `.gitignore`, `CLAUDE.md`, `project/`, `plugins/`, `changelog/`
@@ -32,8 +33,6 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 ## Known Issues / Blockers
 
 - `isInsideInlineCode` improvements noted in code review — edge cases with nested backtick patterns may still exist (low risk, current impl handles common cases)
-- Settings textarea saves on every keystroke (debouncing would be better but not critical for v1)
-- `obsidian: "latest"` in package.json should be pinned for reproducibility
 
 ## Plugin Status
 
