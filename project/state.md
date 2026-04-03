@@ -5,13 +5,12 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 
 ## Active Work
 
-- Aliases Hub v0.1.0 implemented on `feature/aliases-hub` branch (worktree at `.worktrees/aliases-hub`)
-- Integration tested — plugin loads, all commands work, vault-wide alias propagation verified
-- Pending: merge to main, session handoff
+- Aliases Hub v0.1.0 merged to main, 28 tests passing
+- Next: fix type issues flagged in code review, package plugin for vault installation
 
 ## Latest Handoff
 
-`project/handoffs/2026-04-02-001.md`
+`project/handoffs/2026-04-03-001.md`
 
 ## Decisions Log
 
@@ -40,4 +39,4 @@ Persistent state for the MakoNP-Dev project. Updated incrementally as work progr
 
 | Plugin | Status | Location | Notes |
 |--------|--------|----------|-------|
-| Aliases Hub | v0.1.0 functional | `plugins/aliases-hub/` | On `feature/aliases-hub` branch, 28 tests passing |
+| Aliases Hub | v0.1.0 functional | `plugins/aliases-hub/` | Merged to main, 28 tests passing |
