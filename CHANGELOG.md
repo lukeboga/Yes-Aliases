@@ -12,9 +12,11 @@ For older entries, see [changelog archive](changelog/archive/).
 - "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off
 
 ### Added
+- `getYamlSectionRange` utility in link-filter for extracting YAML section offset bounds from cached sections
 - `findFrontmatterLinkOffset` utility in link-filter for locating frontmatter links by string search within YAML bounds
+- Widened `toLinkInput` to accept `{ original: string }` instead of `LinkCache`, enabling use with `FrontmatterLinkCache`
 - `FrontmatterRewrite` type and `applyFrontmatterRewrites` function in vault-writer for bounded YAML section string replacement
-- Tests for `applyFrontmatterRewrites` (5 tests) and `findFrontmatterLinkOffset` (5 tests) — total: 51 tests
+- Tests for `applyFrontmatterRewrites` (5 tests), `findFrontmatterLinkOffset` (5 tests), `toLinkInput` frontmatter shapes (3 tests), and `getYamlSectionRange` (3 tests) — total: 51 tests
 - `extractAliases` helper in alias-resolver for robust alias extraction from both `aliases` and `alias` keys
 - `skipReasonMessage` helper in editor-writer for skip reason to notice message mapping
 - Tests for alias extraction (4 tests) and skip reason messages (3 tests) — total: 35 tests
