@@ -30,8 +30,5 @@ export default tseslint.config(
 		"vitest.config.ts",
 		"main.js",
 		"tests",
-		"MakoNP-Test",
-		"plugins",
-		"build",
 	]),
 );
