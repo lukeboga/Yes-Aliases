@@ -102,6 +102,15 @@ export function buildExcludedRanges(
 	return excluded;
 }
 
+/**
+ * Extract the linkpath (without subpath) from a FrontmatterLinkCache for resolution.
+ * Uses `link.link` directly (already the link destination), then strips any hash.
+ */
+export function getLinkpathFromFrontmatterLink(link: { link: string }): string {
+	const hashIndex = link.link.indexOf("#");
+	return hashIndex === -1 ? link.link : link.link.slice(0, hashIndex);
+}
+
 /** Extract the linkpath portion (without subpath) from a link for resolution. */
 export function getLinkpathForResolution(link: LinkCache): string {
 	const full = extractLinkPath(link.original);

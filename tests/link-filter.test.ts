@@ -5,6 +5,7 @@ import {
 	isEmbed,
 	getYamlSectionRange,
 	findFrontmatterLinkOffset,
+	getLinkpathFromFrontmatterLink,
 	toLinkInput,
 	type OffsetRange,
 } from "../src/link-filter";
@@ -189,5 +190,19 @@ describe("findFrontmatterLinkOffset", () => {
 		const result = findFrontmatterLinkOffset(content2, "[[dup]]", 0, end2);
 		expect(result).not.toBeNull();
 		expect(result!.start).toBe(content2.indexOf("[[dup]]"));
+	});
+});
+
+describe("getLinkpathFromFrontmatterLink", () => {
+	it("returns the link as-is when no hash", () => {
+		expect(getLinkpathFromFrontmatterLink({ link: "notes/my-note" })).toBe("notes/my-note");
+	});
+
+	it("strips the hash and subpath", () => {
+		expect(getLinkpathFromFrontmatterLink({ link: "notes/my-note#heading" })).toBe("notes/my-note");
+	});
+
+	it("strips block reference subpath", () => {
+		expect(getLinkpathFromFrontmatterLink({ link: "notes/my-note#^block-id" })).toBe("notes/my-note");
 	});
 });
