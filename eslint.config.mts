@@ -25,7 +25,13 @@ export default tseslint.config(
 	globalIgnores([
 		"node_modules",
 		"esbuild.config.mjs",
+		"install.mjs",
+		"version-bump.mjs",
+		"vitest.config.ts",
 		"main.js",
 		"tests",
+		"MakoNP-Test",
+		"plugins",
+		"build",
 	]),
 );
