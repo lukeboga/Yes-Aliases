@@ -38,44 +38,76 @@ export function updateLinkUnderCursor(
 	settings: YesAliasesSettings,
 ): string {
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache?.links || cache.links.length === 0) {
-		return "No wikilink under cursor";
-	}
+	if (!cache) return "No wikilink under cursor";
 
 	const cursor = editor.getCursor();
 	const cursorOffset = editor.posToOffset(cursor);
-
-	const link = cache.links.find(
-		(l) =>
-			cursorOffset >= l.position.start.offset &&
-			cursorOffset <= l.position.end.offset,
-	);
-
-	if (!link) {
-		return "No wikilink under cursor";
-	}
-
 	const content = editor.getValue();
-	const excludedRanges = buildExcludedRanges(cache.sections);
 
-	if (isLinkExcluded(link, content, excludedRanges)) {
-		return "No wikilink under cursor";
+	// Try body links first
+	if (cache.links) {
+		const link = cache.links.find(
+			(l) =>
+				cursorOffset >= l.position.start.offset &&
+				cursorOffset <= l.position.end.offset,
+		);
+
+		if (link) {
+			const excludedRanges = buildExcludedRanges(cache.sections);
+			if (!isLinkExcluded(link, content, excludedRanges)) {
+				const linkpath = getLinkpathForResolution(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					return skipReasonMessage(decision.reason);
+				}
+
+				const from = editor.offsetToPos(link.position.start.offset);
+				const to = editor.offsetToPos(link.position.end.offset);
+				editor.replaceRange(decision.newText, from, to);
+				return `Link updated: ${alias}`;
+			}
+		}
 	}
 
-	const linkpath = getLinkpathForResolution(link);
-	const { alias } = resolveAlias(app, linkpath, file.path);
-	const input = toLinkInput(link, alias, settings);
-	const decision = decideRewrite(input);
+	// Fall through to frontmatter links
+	if (
+		settings.updateFrontmatterLinks &&
+		cache.frontmatterLinks &&
+		cache.frontmatterLinks.length > 0
+	) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			for (const link of cache.frontmatterLinks) {
+				const offset = findFrontmatterLinkOffset(
+					content,
+					link.original,
+					yamlRange.start,
+					yamlRange.end,
+				);
+				if (!offset) continue;
+				if (cursorOffset < offset.start || cursorOffset > offset.end) continue;
 
-	if (decision.action === "skip") {
-		return skipReasonMessage(decision.reason);
+				const linkpath = getLinkpathFromFrontmatterLink(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					return skipReasonMessage(decision.reason);
+				}
+
+				const from = editor.offsetToPos(offset.start);
+				const to = editor.offsetToPos(offset.end);
+				editor.replaceRange(decision.newText, from, to);
+				return `Link updated: ${alias}`;
+			}
+		}
 	}
 
-	const from = editor.offsetToPos(link.position.start.offset);
-	const to = editor.offsetToPos(link.position.end.offset);
-	editor.replaceRange(decision.newText, from, to);
-
-	return `Link updated: ${alias}`;
+	return "No wikilink under cursor";
 }
 
 /** Update all qualifying wikilinks in the active file. Returns stats. */
