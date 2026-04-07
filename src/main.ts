@@ -1,4 +1,12 @@
-import { Notice, Plugin, TFolder, type MarkdownView } from "obsidian";
+import { Notice, Plugin, TFile, TFolder, type MarkdownView } from "obsidian";
+import { resolveAlias } from "./alias-resolver";
+import { decideRewrite } from "./pipeline";
+import {
+	findFrontmatterLinkOffset,
+	getLinkpathFromFrontmatterLink,
+	getYamlSectionRange,
+	toLinkInput,
+} from "./link-filter";
 import {
 	type YesAliasesSettings,
 	YesAliasesSettingTab,
@@ -133,6 +141,77 @@ export default class YesAliasesPlugin extends Plugin {
 								this.settings,
 							);
 							new Notice(message);
+						});
+				});
+			}),
+		);
+
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, abstractFile, source, leaf) => {
+				if (source !== "link-context-menu") return;
+				if (!(abstractFile instanceof TFile)) return;
+				if (!this.settings.updateFrontmatterLinks) return;
+
+				const targetFile = abstractFile;
+				const { alias } = resolveAlias(this.app, targetFile.path, "");
+				if (!alias) return;
+
+				const sourceFile = (leaf?.view as MarkdownView)?.file ?? this.app.workspace.getActiveFile();
+				if (!sourceFile) return;
+
+				menu.addItem((item) => {
+					item.setTitle("Update link alias")
+						.setIcon("links-going-out")
+						.onClick(() => {
+							const cache = this.app.metadataCache.getFileCache(sourceFile);
+							if (!cache?.frontmatterLinks) return;
+
+							const yamlRange = getYamlSectionRange(cache.sections);
+							if (!yamlRange) return;
+
+							const editor = (leaf?.view as MarkdownView)?.editor;
+							if (!editor) return;
+
+							const content = editor.getValue();
+							const rewrites: Array<{ from: number; to: number; newText: string }> = [];
+
+							for (const link of cache.frontmatterLinks) {
+								const linkpath = getLinkpathFromFrontmatterLink(link);
+								const resolved = this.app.metadataCache.getFirstLinkpathDest(
+									linkpath,
+									sourceFile.path,
+								);
+								if (resolved?.path !== targetFile.path) continue;
+
+								const input = toLinkInput(link, alias, this.settings);
+								const decision = decideRewrite(input);
+								if (decision.action !== "rewrite") continue;
+
+								const offset = findFrontmatterLinkOffset(
+									content,
+									link.original,
+									yamlRange.start,
+									yamlRange.end,
+								);
+								if (offset) {
+									rewrites.push({
+										from: offset.start,
+										to: offset.end,
+										newText: decision.newText,
+									});
+								}
+							}
+
+							rewrites.sort((a, b) => b.from - a.from);
+							for (const rewrite of rewrites) {
+								const from = editor.offsetToPos(rewrite.from);
+								const to = editor.offsetToPos(rewrite.to);
+								editor.replaceRange(rewrite.newText, from, to);
+							}
+
+							if (rewrites.length > 0) {
+								new Notice(`${rewrites.length} link${rewrites.length > 1 ? "s" : ""} updated: ${alias}`);
+							}
 						});
 				});
 			}),
