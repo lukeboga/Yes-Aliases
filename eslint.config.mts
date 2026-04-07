@@ -24,6 +24,7 @@ export default tseslint.config(
 	...obsidianmd.configs.recommended,
 	globalIgnores([
 		"node_modules",
+		"__mocks__",
 		"esbuild.config.mjs",
 		"install.mjs",
 		"version-bump.mjs",
