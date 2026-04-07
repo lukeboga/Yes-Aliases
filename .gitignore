@@ -1,28 +1,16 @@
-*
-!.gitignore
-!CLAUDE.md
-!.github/
-!.github/**
-!project/
-!project/**
-!changelog/
-!changelog/**
-!plugins/
-!plugins/**
-!build/
-!build/**
-!src/
-!src/**
-!tests/
-!tests/**
-!manifest.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!esbuild.config.mjs
-!eslint.config.mts
-!install.mjs
-!.editorconfig
-!version-bump.mjs
-!versions.json
-!vitest.config.ts
+# Build output
+main.js
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Dev tools
+project/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
