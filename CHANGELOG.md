@@ -7,6 +7,19 @@ For older entries, see [changelog archive](changelog/archive/).
 
 ## [Unreleased]
 
+### Fixed
+- Alias resolution now handles `alias` (singular) frontmatter key via `parseFrontMatterStringArray` fallback
+- "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off
+
+### Added
+- `FrontmatterRewrite` type and `applyFrontmatterRewrites` function in vault-writer for bounded YAML section string replacement
+- Tests for `applyFrontmatterRewrites` (5 tests) — total: 51 tests
+- `extractAliases` helper in alias-resolver for robust alias extraction from both `aliases` and `alias` keys
+- `skipReasonMessage` helper in editor-writer for skip reason to notice message mapping
+- Tests for alias extraction (4 tests) and skip reason messages (3 tests) — total: 35 tests
+- `__mocks__/obsidian.ts` for Vitest mocking of Obsidian API functions
+- Vitest config: `obsidian` module alias to mock for testability
+
 ### Changed
 - Migrate from multi-plugin monorepo to single-plugin release structure
 - Rename from "Aliases Hub" to "Yes Aliases"

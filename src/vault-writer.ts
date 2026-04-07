@@ -33,6 +33,51 @@ interface PlannedRewrite {
 	newText: string;
 }
 
+export interface FrontmatterRewrite {
+	original: string;
+	newText: string;
+}
+
+/**
+ * Apply frontmatter rewrites using bounded string replacement within the YAML section.
+ * Deduplicates by original text. Does not modify content outside YAML bounds.
+ */
+export function applyFrontmatterRewrites(
+	content: string,
+	rewrites: FrontmatterRewrite[],
+	yamlStart: number,
+	yamlEnd: number,
+): { content: string; applied: number } {
+	if (rewrites.length === 0) return { content, applied: 0 };
+
+	const unique = new Map<string, string>();
+	for (const r of rewrites) {
+		unique.set(r.original, r.newText);
+	}
+
+	let frontmatter = content.slice(yamlStart, yamlEnd);
+	let applied = 0;
+
+	for (const [original, newText] of unique) {
+		let count = 0;
+		let idx = frontmatter.indexOf(original);
+		while (idx !== -1) {
+			count++;
+			idx = frontmatter.indexOf(original, idx + original.length);
+		}
+		if (count > 0) {
+			frontmatter = frontmatter.replaceAll(original, newText);
+			applied += count;
+		}
+	}
+
+	if (applied === 0) return { content, applied: 0 };
+	return {
+		content: content.slice(0, yamlStart) + frontmatter + content.slice(yamlEnd),
+		applied,
+	};
+}
+
 /**
  * Check if a file path should be ignored based on the ignored folders list.
  * Uses prefix matching.
