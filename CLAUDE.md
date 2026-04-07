@@ -1,111 +1,30 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-**This file must be kept up to date as project scope and requirements change.**
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-Development repo for the **MakoNP** Obsidian vault. The vault at `./MakoNP-Test/` is a testing clone of the live vault used for plugin development. The goal is to create focused Obsidian plugins that serve the vault's PKM workflow, including its custom note-tagging system (ntags), task management, bookmarks, events, and Obsidian Bases integration.
+**Yes Aliases** — a single-purpose Obsidian plugin. Propagates `aliases[0]` from target file frontmatter into wikilink display text. Four scope levels: cursor, file, folder, vault. Manual command-driven, no live/on-type updating.
 
-### Planned Plugins
+## Quick Reference
 
-- **Aliases Hub** — (first plugin, details TBD)
-- More to follow based on vault requirements
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Watch mode |
+| `npm run build` | Type-check + production bundle |
+| `npm run install:vault` | Build + copy to dev vault (requires .env) |
+| `npm test` | Run Vitest tests |
+| `npm run lint` | ESLint |
 
-### Project-Level Skills
+Key paths: `src/` (plugin source), `tests/` (unit tests), `manifest.json` (plugin metadata).
 
-- `obsidian-skills` (kepano) — reference for Obsidian plugin patterns
-- `superpowers` (obra) — reference for advanced plugin capabilities
+## Dev Vault
 
-## Vault Structure (`./MakoNP-Test/`)
+Dev vault configured via `.env` file with `OBSIDIAN_VAULT_PATH=/path/to/vault`. The `.env` file is gitignored. `npm run install:vault` builds and copies `main.js` + `manifest.json` to the vault's plugin directory. See CONTRIBUTING.md for full setup.
 
-```
-MakoNP-Test/
-  notes/          # All notes (timestamped + daily notes)
-  ntag/
-    type/         # NTag type definitions (%Note, %Task/Basic, etc.)
-    stack/        # NTag stack/context definitions (+MakoNP, etc.)
-    theme/        # Reserved for future use
-  _meta/
-    templates/
-      full/       # Complete note templates (Daily-Note, _Note, NTag, Task.Basic, Task.Full, View)
-      partial/    # Snippet templates (Log-Link)
-    assets/       # Attachments
-    obsidian.vimrc
-```
+## Architecture & Conventions
 
-## NTag System
-
-NTags are the vault's custom categorization system, stored as notes with frontmatter. Two dimensions:
-
-- **Types** (`ntag/type/`) — Note classification. Alias prefix: `%` (e.g., `%Note`, `%Task/Full`, `%DailyNote`, `%View`)
-- **Stacks** (`ntag/stack/`) — Context/project grouping. Alias prefix: `+` (e.g., `+MakoNP`)
-
-Type references in frontmatter use absolute wiki-links: `type: "[[ntag/type/task.full|%Task/Full]]"`
-Stack references: `context: "[[ntag/stack/mako-np|+MakoNP]]"`
-
-All notes have an `ntags: []` field reserved for tagging.
-
-## Frontmatter Conventions
-
-**Universal fields:** `aliases`, `created`, `modified`, `ntags`, `type`
-
-**Task.Full additions:** `status` (pending/in_progress/completed), `closed` (checkbox), `due_date`, `due_time`, `scheduled_date`, `scheduled_time`, `duration`, `priority` (format: `LEVEL-NAME`, e.g., `2-med`)
-
-**View additions:** `context` (stack reference)
-
-## Note Naming
-
-- **Timestamped notes:** `YYYY-MM-DD-HHmm-ssSSS.md` (ZK Prefixer format, millisecond precision)
-- **Daily notes:** `YYYY-MM-DD.md`
-- All notes live in `notes/`
-
-## Obsidian Config Highlights
-
-- Vim mode enabled (custom vimrc at `_meta/obsidian.vimrc`)
-- Link format: absolute paths, auto-updated on move
-- New notes go to `notes/` folder
-- Templates folder: `_meta/templates`
-- Installed community plugin: `obsidian-vimrc-support`
-- Core plugins of note: `bases`, `daily-notes`, `templates`, `zk-prefixer`, `bookmarks`
-- `_meta/` is hidden from vault UI via user ignore filters
-
-## Plugin Development
-
-Obsidian plugins are TypeScript projects. Standard structure:
-
-```
-plugin-name/
-  src/
-    main.ts       # Plugin entry point (extends Plugin)
-  manifest.json   # Plugin metadata (id, name, version, minAppVersion)
-  install.mjs     # Copies built files to build/ and dev vault
-  package.json
-  tsconfig.json
-  esbuild.config.mjs
-```
-
-### Build & Install
-
-`npm run install:vault` (from a plugin directory) does three things:
-1. Type-checks and bundles the plugin (`tsc` + `esbuild`)
-2. Copies `main.js` + `manifest.json` to `build/<plugin-id>/` — portable output for any vault
-3. Copies the same files to `MakoNP-Test/.obsidian/plugins/<plugin-id>/` (dev vault)
-
-To install in a live vault, copy `build/<plugin-id>/` into `<vault>/.obsidian/plugins/<plugin-id>/`.
-
-Each plugin needs at minimum: `manifest.json`, `main.js`, and optionally `styles.css`.
-
-### Build Commands (per plugin)
-
-```sh
-cd plugins/<plugin-name>
-npm install
-npm run dev           # watch mode
-npm run build         # production build (type-check + bundle)
-npm run install:vault # build + copy to build/ and dev vault
-```
+See CONTRIBUTING.md for architecture, module reference, code style, Obsidian API rules, accessibility requirements, and release process.
 
 ## Handoff Protocol
 
@@ -118,7 +37,6 @@ Single source of truth for project-wide status. Contains:
 - **Decisions Log** — dated record of architectural/design choices
 - **Architecture Decisions** — rationale for non-obvious structural choices
 - **Known Issues / Blockers** — unresolved problems
-- **Plugin Status** — table tracking each plugin's lifecycle
 
 **Rules:**
 - Read `project/state.md` at the start of every session
@@ -186,18 +104,13 @@ Short-lived context bridges between consecutive sessions. One file per handoff.
 - Name files, paths, functions — never say "the main file" or "the config"
 - Decisions need rationale, not just outcomes
 
-## Changelog — `changelog/`
+## Changelog
 
-Rolling log of project changes. Reverse chronological order.
-
-- **`changelog/CHANGELOG.md`** — active changelog, 4–8 items
-  - 4 = minimum before archiving is considered
-  - 8 = hard limit; archive immediately at natural seam or when limit is hit
-- **`changelog/archive/YYYY-MM.md`** — monthly archive files, items batched and moved here
-- Each item: `- YYYY-MM-DD: <concise description of what changed and why>`
-- Archive at a natural seam (end of feature, milestone, sprint) or when hitting 8 items
-- When archiving: move oldest items to the appropriate `changelog/archive/YYYY-MM.md`, keep the most recent items in `CHANGELOG.md`
+- **`CHANGELOG.md`** at repo root — Keep a Changelog format, semver headings
+- **`changelog/archive/`** — monthly archive files, linked from root changelog
 - Update changelog with every commit
+- Use Keep a Changelog categories: Added, Changed, Fixed, Removed
+- Archive old release entries when the file gets long
 
 ## End-of-Session Git Commit
 
@@ -208,20 +121,12 @@ Commit all tracked changes at the end of every session. Rules:
 - Scope the subject to the most significant change; use body for the rest
 - If the session touched multiple unrelated areas, prefer multiple focused commits over one sprawling commit
 - Stage specific files — never `git add -A` or `git add .`
-- Update `changelog/CHANGELOG.md` before committing
+- Update `CHANGELOG.md` before committing
 
-## .gitignore Policy
+## Key Development Notes
 
-This repo uses a deny-all `.gitignore` (`*`) with an explicit allowlist. New top-level directories or files will not be tracked until added as exceptions.
-
-- When creating a new top-level dir or file that should be tracked, add `!path/` and `!path/**` (for dirs) or `!filename` (for files) to `.gitignore`
-- Flag to the user when a new `.gitignore` exception is needed
-- Exceptions are added incrementally as the project grows — do not pre-add paths speculatively
-
-## Key Principles
-
-- Each plugin should have a single, well-defined focus
-- Plugins must respect the existing ntag system and frontmatter conventions
-- Use absolute wiki-link format (`[[path/to/note|Alias]]`) when generating links
-- Preserve the `%` prefix for type aliases and `+` prefix for stack aliases
-- Templates use Obsidian core Templater syntax: `{{date:FORMAT}}`, `{{time:FORMAT}}` with moment.js tokens
+- `minAppVersion` in `manifest.json` must be reviewed when new Obsidian APIs are added
+- Command IDs must not contain the plugin name or "command"
+- All UI text must use sentence case
+- No default hotkeys
+- `project/` is gitignored — dev continuity only, not visible to plugin users
