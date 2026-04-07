@@ -20,3 +20,7 @@
 !esbuild.config.mjs
 !eslint.config.mts
 !install.mjs
+!.editorconfig
+!version-bump.mjs
+!versions.json
+!vitest.config.ts
