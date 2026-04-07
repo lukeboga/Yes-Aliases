@@ -3,6 +3,9 @@ import {
 	isInsideSection,
 	isInsideInlineCode,
 	isEmbed,
+	getYamlSectionRange,
+	findFrontmatterLinkOffset,
+	toLinkInput,
 	type OffsetRange,
 } from "../src/link-filter";
 
@@ -87,5 +90,104 @@ describe("isEmbed", () => {
 	it("returns false at start of content", () => {
 		const content = "[[file]] more";
 		expect(isEmbed(content, 0)).toBe(false);
+	});
+});
+
+describe("toLinkInput with frontmatter-shaped input", () => {
+	const settings = { overwriteExisting: false, updateFrontmatterLinks: true, ignoredFolders: [] };
+
+	it("handles a bare frontmatter link", () => {
+		const link = { original: "[[target-file]]", link: "target-file", displayText: "target-file", key: "ntags.0" };
+		const result = toLinkInput(link, "My Alias", settings);
+		expect(result).toEqual({
+			original: "[[target-file]]",
+			hasExplicitDisplayText: false,
+			currentDisplayText: null,
+			targetAlias: "My Alias",
+			overwriteExisting: false,
+		});
+	});
+
+	it("handles a frontmatter link with display text", () => {
+		const link = { original: "[[target-file|Old Text]]", link: "target-file", displayText: "Old Text", key: "type" };
+		const result = toLinkInput(link, "My Alias", settings);
+		expect(result).toEqual({
+			original: "[[target-file|Old Text]]",
+			hasExplicitDisplayText: true,
+			currentDisplayText: "Old Text",
+			targetAlias: "My Alias",
+			overwriteExisting: false,
+		});
+	});
+
+	it("handles a frontmatter link with subpath", () => {
+		const link = { original: "[[target-file#heading]]", link: "target-file#heading", displayText: "target-file > heading", key: "ref" };
+		const result = toLinkInput(link, "My Alias", settings);
+		expect(result).toEqual({
+			original: "[[target-file#heading]]",
+			hasExplicitDisplayText: false,
+			currentDisplayText: null,
+			targetAlias: "My Alias",
+			overwriteExisting: false,
+		});
+	});
+});
+
+describe("getYamlSectionRange", () => {
+	it("returns the yaml section range", () => {
+		const sections = [
+			{ type: "yaml", position: { start: { offset: 0 }, end: { offset: 100 } } },
+			{ type: "paragraph", position: { start: { offset: 101 }, end: { offset: 200 } } },
+		] as any;
+		expect(getYamlSectionRange(sections)).toEqual({ start: 0, end: 100 });
+	});
+
+	it("returns null when no yaml section exists", () => {
+		const sections = [
+			{ type: "paragraph", position: { start: { offset: 0 }, end: { offset: 100 } } },
+		] as any;
+		expect(getYamlSectionRange(sections)).toBeNull();
+	});
+
+	it("returns null when sections is undefined", () => {
+		expect(getYamlSectionRange(undefined)).toBeNull();
+	});
+});
+
+describe("findFrontmatterLinkOffset", () => {
+	const content = '---\nntags:\n  - "[[target-note]]"\ntype: "[[other-note|Display]]"\n---\n\nBody text here.';
+	const yamlStart = 0;
+	const yamlEnd = content.indexOf("---", 3) + 3;
+
+	it("finds a bare link in frontmatter", () => {
+		const result = findFrontmatterLinkOffset(content, "[[target-note]]", yamlStart, yamlEnd);
+		expect(result).not.toBeNull();
+		expect(content.slice(result!.start, result!.end)).toBe("[[target-note]]");
+	});
+
+	it("finds a link with display text in frontmatter", () => {
+		const result = findFrontmatterLinkOffset(content, "[[other-note|Display]]", yamlStart, yamlEnd);
+		expect(result).not.toBeNull();
+		expect(content.slice(result!.start, result!.end)).toBe("[[other-note|Display]]");
+	});
+
+	it("returns null when link is not in frontmatter", () => {
+		const result = findFrontmatterLinkOffset(content, "[[nonexistent]]", yamlStart, yamlEnd);
+		expect(result).toBeNull();
+	});
+
+	it("returns null when link exists only outside YAML bounds", () => {
+		const contentWithBody = '---\nfoo: bar\n---\n\n[[target-note]] in body';
+		const end = contentWithBody.indexOf("---", 3) + 3;
+		const result = findFrontmatterLinkOffset(contentWithBody, "[[target-note]]", 0, end);
+		expect(result).toBeNull();
+	});
+
+	it("finds the first occurrence when link appears multiple times", () => {
+		const content2 = '---\na: "[[dup]]"\nb: "[[dup]]"\n---\n';
+		const end2 = content2.lastIndexOf("---") + 3;
+		const result = findFrontmatterLinkOffset(content2, "[[dup]]", 0, end2);
+		expect(result).not.toBeNull();
+		expect(result!.start).toBe(content2.indexOf("[[dup]]"));
 	});
 });
