@@ -1,9 +1,12 @@
 import type { App, Editor, TFile } from "obsidian";
-import { decideRewrite } from "./pipeline";
+import { decideRewrite, type SkipReason } from "./pipeline";
 import { resolveAlias } from "./alias-resolver";
 import {
 	buildExcludedRanges,
+	findFrontmatterLinkOffset,
 	getLinkpathForResolution,
+	getLinkpathFromFrontmatterLink,
+	getYamlSectionRange,
 	isLinkExcluded,
 	toLinkInput,
 } from "./link-filter";
@@ -13,6 +16,18 @@ import type { YesAliasesSettings } from "./settings";
 export interface WriteStats {
 	updated: number;
 	skipped: number;
+}
+
+/** Map a pipeline skip reason to a user-facing notice message. */
+export function skipReasonMessage(reason: SkipReason): string {
+	switch (reason) {
+		case "no-alias":
+			return "No alias found for target";
+		case "has-display-text":
+			return "Skipped — display text already set";
+		case "already-correct":
+			return "Link already up to date";
+	}
 }
 
 /** Update the single wikilink under the cursor. Returns a user-facing message. */
@@ -53,8 +68,7 @@ export function updateLinkUnderCursor(
 	const decision = decideRewrite(input);
 
 	if (decision.action === "skip") {
-		if (decision.reason === "no-alias") return "No alias found for target";
-		return "Link already up to date";
+		return skipReasonMessage(decision.reason);
 	}
 
 	const from = editor.offsetToPos(link.position.start.offset);
@@ -72,13 +86,19 @@ export function updateLinksInFile(
 	settings: YesAliasesSettings,
 ): WriteStats {
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache?.links || cache.links.length === 0) {
+	if (!cache) return { updated: 0, skipped: 0 };
+
+	const hasBodyLinks = cache.links && cache.links.length > 0;
+	const hasFmLinks =
+		settings.updateFrontmatterLinks &&
+		cache.frontmatterLinks &&
+		cache.frontmatterLinks.length > 0;
+
+	if (!hasBodyLinks && !hasFmLinks) {
 		return { updated: 0, skipped: 0 };
 	}
 
 	const content = editor.getValue();
-	const excludedRanges = buildExcludedRanges(cache.sections);
-
 	const rewrites: Array<{
 		from: number;
 		to: number;
@@ -86,27 +106,63 @@ export function updateLinksInFile(
 	}> = [];
 	let skipped = 0;
 
-	for (const link of cache.links) {
-		if (isLinkExcluded(link, content, excludedRanges)) {
-			continue;
-		}
+	// Body links
+	if (hasBodyLinks) {
+		const excludedRanges = buildExcludedRanges(cache.sections);
+		for (const link of cache.links!) {
+			if (isLinkExcluded(link, content, excludedRanges)) {
+				continue;
+			}
 
-		const linkpath = getLinkpathForResolution(link);
-		const { alias } = resolveAlias(app, linkpath, file.path);
-		const input = toLinkInput(link, alias, settings);
-		const decision = decideRewrite(input);
+			const linkpath = getLinkpathForResolution(link);
+			const { alias } = resolveAlias(app, linkpath, file.path);
+			const input = toLinkInput(link, alias, settings);
+			const decision = decideRewrite(input);
 
-		if (decision.action === "skip") {
-			skipped++;
-		} else {
-			rewrites.push({
-				from: link.position.start.offset,
-				to: link.position.end.offset,
-				newText: decision.newText,
-			});
+			if (decision.action === "skip") {
+				skipped++;
+			} else {
+				rewrites.push({
+					from: link.position.start.offset,
+					to: link.position.end.offset,
+					newText: decision.newText,
+				});
+			}
 		}
 	}
 
+	// Frontmatter links
+	if (hasFmLinks) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			for (const link of cache.frontmatterLinks!) {
+				const linkpath = getLinkpathFromFrontmatterLink(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					skipped++;
+				} else {
+					const offset = findFrontmatterLinkOffset(
+						content,
+						link.original,
+						yamlRange.start,
+						yamlRange.end,
+					);
+					if (offset) {
+						rewrites.push({
+							from: offset.start,
+							to: offset.end,
+							newText: decision.newText,
+						});
+					}
+				}
+			}
+		}
+	}
+
+	// Apply all rewrites in reverse offset order
 	rewrites.sort((a, b) => b.from - a.from);
 
 	for (const rewrite of rewrites) {
