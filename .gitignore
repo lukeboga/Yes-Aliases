@@ -9,3 +9,14 @@
 !plugins/**
 !build/
 !build/**
+!src/
+!src/**
+!tests/
+!tests/**
+!manifest.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!esbuild.config.mjs
+!eslint.config.mts
+!install.mjs
