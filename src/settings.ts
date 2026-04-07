@@ -1,24 +1,24 @@
 import { App, debounce, PluginSettingTab, Setting } from "obsidian";
-import type AliasHubPlugin from "./main";
+import type YesAliasesPlugin from "./main";
 
-/** Configuration options for the Alias Hub plugin. */
-export interface AliasHubSettings {
+/** Configuration options for the Yes Aliases plugin. */
+export interface YesAliasesSettings {
 	/** When true, replace existing display text with the alias. When false, skip links that already have display text. */
 	overwriteExisting: boolean;
 	/** Folder paths (relative to vault root) excluded from folder and vault-wide operations. Prefix-matched. */
 	ignoredFolders: string[];
 }
 
-export const DEFAULT_SETTINGS: AliasHubSettings = {
+export const DEFAULT_SETTINGS: YesAliasesSettings = {
 	overwriteExisting: false,
 	ignoredFolders: [],
 };
 
-/** Settings tab for the Alias Hub plugin. */
-export class AliasHubSettingTab extends PluginSettingTab {
-	plugin: AliasHubPlugin;
+/** Settings tab for the Yes Aliases plugin. */
+export class YesAliasesSettingTab extends PluginSettingTab {
+	plugin: YesAliasesPlugin;
 
-	constructor(app: App, plugin: AliasHubPlugin) {
+	constructor(app: App, plugin: YesAliasesPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

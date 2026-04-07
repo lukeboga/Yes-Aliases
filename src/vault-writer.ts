@@ -15,7 +15,7 @@ import {
 	isInsideSection,
 	toLinkInput,
 } from "./link-filter";
-import type { AliasHubSettings } from "./settings";
+import type { YesAliasesSettings } from "./settings";
 
 /** Stats returned after a bulk write operation. */
 export interface BulkWriteStats {
@@ -66,7 +66,7 @@ function collectMarkdownFiles(folder: TFolder): TFile[] {
 function planRewrites(
 	app: App,
 	file: TFile,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): PlannedRewrite[] {
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache?.links || cache.links.length === 0) return [];
@@ -138,7 +138,7 @@ function yieldToUI(): Promise<void> {
 export async function updateLinksInFolder(
 	app: App,
 	folder: TFolder,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): Promise<BulkWriteStats> {
 	const files = collectMarkdownFiles(folder).filter(
 		(f) => !isIgnored(f.path, settings.ignoredFolders),
@@ -149,7 +149,7 @@ export async function updateLinksInFolder(
 /** Update all links in the vault. */
 export async function updateLinksInVault(
 	app: App,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): Promise<BulkWriteStats> {
 	const files = app.vault.getMarkdownFiles().filter(
 		(f) => !isIgnored(f.path, settings.ignoredFolders),
@@ -164,7 +164,7 @@ export async function updateLinksInVault(
 async function executeBulk(
 	app: App,
 	files: TFile[],
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): Promise<BulkWriteStats> {
 	const plan = new Map<TFile, PlannedRewrite[]>();
 

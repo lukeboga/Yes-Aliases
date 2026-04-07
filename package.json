@@ -1,5 +1,5 @@
 {
-	"name": "aliases-hub",
+	"name": "yes-aliases",
 	"version": "0.1.0",
 	"description": "Propagate aliases into wikilink display text",
 	"main": "main.js",

@@ -7,7 +7,7 @@ import {
 	isLinkExcluded,
 	toLinkInput,
 } from "./link-filter";
-import type { AliasHubSettings } from "./settings";
+import type { YesAliasesSettings } from "./settings";
 
 /** Stats returned after a write operation. */
 export interface WriteStats {
@@ -20,7 +20,7 @@ export function updateLinkUnderCursor(
 	app: App,
 	editor: Editor,
 	file: TFile,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): string {
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache?.links || cache.links.length === 0) {
@@ -69,7 +69,7 @@ export function updateLinksInFile(
 	app: App,
 	editor: Editor,
 	file: TFile,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): WriteStats {
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache?.links || cache.links.length === 0) {

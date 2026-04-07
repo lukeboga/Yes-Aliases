@@ -1,6 +1,6 @@
 import type { LinkCache, SectionCache } from "obsidian";
 import { extractLinkPath, type LinkInput } from "./pipeline";
-import type { AliasHubSettings } from "./settings";
+import type { YesAliasesSettings } from "./settings";
 
 /** A start/end offset range for position comparison. */
 export interface OffsetRange {
@@ -116,7 +116,7 @@ export function getLinkpathForResolution(link: LinkCache): string {
 export function toLinkInput(
 	link: LinkCache,
 	alias: string | null,
-	settings: AliasHubSettings,
+	settings: YesAliasesSettings,
 ): LinkInput {
 	const pipeIndex = link.original.indexOf("|");
 	const hasExplicit = pipeIndex !== -1;

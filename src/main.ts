@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFolder, type MarkdownView } from "obsidian";
 import {
-	type AliasHubSettings,
-	AliasHubSettingTab,
+	type YesAliasesSettings,
+	YesAliasesSettingTab,
 	DEFAULT_SETTINGS,
 } from "./settings";
 import { updateLinkUnderCursor, updateLinksInFile } from "./editor-writer";
@@ -10,21 +10,21 @@ import {
 	updateLinksInVault,
 } from "./vault-writer";
 
-export default class AliasHubPlugin extends Plugin {
-	settings!: AliasHubSettings;
+export default class YesAliasesPlugin extends Plugin {
+	settings!: YesAliasesSettings;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.addSettingTab(new AliasHubSettingTab(this.app, this));
+		this.addSettingTab(new YesAliasesSettingTab(this.app, this));
 		this.registerCommands();
 		this.registerContextMenus();
 	}
 
 	async loadSettings(): Promise<void> {
 		this.settings = Object.assign(
-			{} as AliasHubSettings,
+			{} as YesAliasesSettings,
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<AliasHubSettings>,
+			(await this.loadData()) as Partial<YesAliasesSettings>,
 		);
 	}
 
