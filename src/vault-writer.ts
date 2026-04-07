@@ -66,7 +66,7 @@ export function applyFrontmatterRewrites(
 			idx = frontmatter.indexOf(original, idx + original.length);
 		}
 		if (count > 0) {
-			frontmatter = frontmatter.replaceAll(original, newText);
+			frontmatter = frontmatter.split(original).join(newText);
 			applied += count;
 		}
 	}
