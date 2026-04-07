@@ -72,7 +72,7 @@ export function updateLinkUnderCursor(
 		}
 	}
 
-	// Fall through to frontmatter links
+	// Fall through to frontmatter links — find all occurrences to handle duplicates
 	if (
 		settings.updateFrontmatterLinks &&
 		cache.frontmatterLinks &&
@@ -80,14 +80,17 @@ export function updateLinkUnderCursor(
 	) {
 		const yamlRange = getYamlSectionRange(cache.sections);
 		if (yamlRange) {
+			const searchFrom = new Map<string, number>();
 			for (const link of cache.frontmatterLinks) {
+				const startFrom = searchFrom.get(link.original) ?? yamlRange.start;
 				const offset = findFrontmatterLinkOffset(
 					content,
 					link.original,
-					yamlRange.start,
+					startFrom,
 					yamlRange.end,
 				);
 				if (!offset) continue;
+				searchFrom.set(link.original, offset.end);
 				if (cursorOffset < offset.start || cursorOffset > offset.end) continue;
 
 				const linkpath = getLinkpathFromFrontmatterLink(link);
@@ -163,10 +166,11 @@ export function updateLinksInFile(
 		}
 	}
 
-	// Frontmatter links
+	// Frontmatter links — track search positions to handle duplicate originals
 	if (hasFmLinks) {
 		const yamlRange = getYamlSectionRange(cache.sections);
 		if (yamlRange) {
+			const searchFrom = new Map<string, number>();
 			for (const link of cache.frontmatterLinks!) {
 				const linkpath = getLinkpathFromFrontmatterLink(link);
 				const { alias } = resolveAlias(app, linkpath, file.path);
@@ -176,10 +180,11 @@ export function updateLinksInFile(
 				if (decision.action === "skip") {
 					skipped++;
 				} else {
+					const startFrom = searchFrom.get(link.original) ?? yamlRange.start;
 					const offset = findFrontmatterLinkOffset(
 						content,
 						link.original,
-						yamlRange.start,
+						startFrom,
 						yamlRange.end,
 					);
 					if (offset) {
@@ -188,6 +193,7 @@ export function updateLinksInFile(
 							to: offset.end,
 							newText: decision.newText,
 						});
+						searchFrom.set(link.original, offset.end);
 					}
 				}
 			}
