@@ -10,7 +10,8 @@ Obsidian wiki-links default to showing the raw filename, which for timestamped o
 
 | Command | Scope | Access |
 | --- | --- | --- |
-| Update link under cursor | Single link at cursor | Command palette, editor context menu |
+| Update link under cursor | Single link at cursor | Command palette |
+| Update link alias | Single link (body or source-mode YAML); all frontmatter links to target (Properties UI) | Right-click a wikilink |
 | Update all links in current file | All links in active file | Command palette |
 | Update all links in folder | All files in folder (recursive) | File explorer context menu |
 | Update all links in vault | All files in vault | Command palette |
@@ -46,11 +47,9 @@ The plugin skips the following and leaves them unchanged:
 
 ## Known limitations
 
-**Properties UI does not visually refresh after frontmatter link updates in Live Preview.** When you use the "Update link alias" context menu on a wikilink in the Properties panel (Live Preview mode), the file is correctly updated on disk and the alias is applied — but the Properties UI component does not re-render to show the change until you navigate away from the note and back, or switch to Source mode.
+**Right-clicking a frontmatter wikilink in the Properties UI updates every frontmatter link to that target, not just the clicked one.** If a note has multiple frontmatter wikilinks pointing to the same target file (e.g. the same target listed twice in a `links` property), right-clicking any of them and selecting "Update link alias" rewrites all of them in one operation. Body links to the same target are not affected.
 
-This is an Obsidian framework limitation: there is no public API to programmatically refresh the Properties UI component after a file modification. The internal `MetadataEditor` exposes no refresh method, and full view rebuilds (`leaf.rebuildView()`, `leaf.openFile()`) are too disruptive — they reset cursor position and conflict with manual save mode. See discussion at [forum.obsidian.md/t/refresh-display-of-frontmatter-properties/67928](https://forum.obsidian.md/t/refresh-display-of-frontmatter-properties/67928).
-
-The underlying file is always correctly updated; this is a display-only issue.
+This is because Obsidian's `link-context-menu` event reports only the target file, not which property field was clicked. There is no public way to map the right-click back to a specific frontmatter link occurrence. Per-link semantics still work for body links (they use the cursor position) and for source-mode YAML wikilinks (they use the click coordinates). Use the "Update link under cursor" command in source mode if you need to update a single specific frontmatter link.
 
 ## Contributing
 
