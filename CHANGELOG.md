@@ -16,6 +16,8 @@ For older entries, see [changelog archive](changelog/archive/).
 ### Fixed
 - Alias resolution now handles `alias` (singular) frontmatter key via `parseFrontMatterStringArray` fallback
 - "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off
+- Duplicate "Update link alias" context menu items when right-clicking body links in Live Preview — `file-menu` handler now checks for matching frontmatter links before adding menu item
+- Properties UI "Update link alias" click doing nothing in Live Preview — switched from `editor.replaceRange()` to `vault.process()` for frontmatter context menu writes
 
 ### Changed
 - Migrate from multi-plugin monorepo to single-plugin release structure

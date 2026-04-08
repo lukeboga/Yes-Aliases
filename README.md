@@ -20,6 +20,7 @@ Obsidian wiki-links default to showing the raw filename, which for timestamped o
 | Setting | Default | Description |
 | --- | --- | --- |
 | Overwrite existing display text | Off | When off, links with existing display text are skipped. When on, existing display text is replaced with the alias. |
+| Update frontmatter links | On | When on, wikilinks inside frontmatter properties are processed alongside body links. When off, only body links are updated. |
 | Ignored folders | (empty) | Folder paths excluded from folder and vault-wide operations. Prefix-matched. |
 
 ## Installation
@@ -40,8 +41,16 @@ The plugin skips the following and leaves them unchanged:
 - Files with no aliases in frontmatter
 - Embeds (`![[...]]`)
 - Links inside code blocks or inline code
-- Links inside frontmatter
 - Links with existing display text (when "Overwrite existing display text" is off)
+- Frontmatter links (when "Update frontmatter links" is off)
+
+## Known limitations
+
+**Properties UI does not visually refresh after frontmatter link updates in Live Preview.** When you use the "Update link alias" context menu on a wikilink in the Properties panel (Live Preview mode), the file is correctly updated on disk and the alias is applied — but the Properties UI component does not re-render to show the change until you navigate away from the note and back, or switch to Source mode.
+
+This is an Obsidian framework limitation: there is no public API to programmatically refresh the Properties UI component after a file modification. The internal `MetadataEditor` exposes no refresh method, and full view rebuilds (`leaf.rebuildView()`, `leaf.openFile()`) are too disruptive — they reset cursor position and conflict with manual save mode. See discussion at [forum.obsidian.md/t/refresh-display-of-frontmatter-properties/67928](https://forum.obsidian.md/t/refresh-display-of-frontmatter-properties/67928).
+
+The underlying file is always correctly updated; this is a display-only issue.
 
 ## Contributing
 
