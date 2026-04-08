@@ -222,8 +222,6 @@ export default class YesAliasesPlugin extends Plugin {
 				if (!(abstractFile instanceof TFile)) return;
 
 				const targetFile = abstractFile;
-				const { alias } = resolveAlias(this.app, targetFile.path, "");
-				if (!alias) return;
 
 				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 				const sourceFile = view?.file;
@@ -264,29 +262,63 @@ export default class YesAliasesPlugin extends Plugin {
 							const editor = view.editor;
 							if (!editor) return;
 
-							// Try per-link update via cursor first. By the time the
-							// menu item is clicked, the cursor has moved to the
-							// right-clicked link (in source/Live Preview body and
-							// source-mode YAML cases). This preserves the same
-							// per-link semantics as the "Update link under cursor"
-							// command.
-							const result = updateLinkUnderCursor(
-								this.app,
-								editor,
-								sourceFile,
-								this.settings,
-							);
+							// Disambiguate editor click vs Properties UI click via
+							// the CodeMirror contentDOM bounding rect. Editor cursor
+							// is unreliable for Properties UI clicks: the right-click
+							// never moves the cursor, so it can land on an unrelated
+							// body link and cause the cursor path to skip the actual
+							// frontmatter target. `cm.posAtCoords` is unsuitable here
+							// because it clamps to the nearest position rather than
+							// returning null for clicks outside the content area.
+							const coords = this.lastContextmenuCoords;
+							const cm = (editor as unknown as {
+								cm?: { contentDOM?: HTMLElement };
+							}).cm;
+							const contentRect = cm?.contentDOM?.getBoundingClientRect();
+							const clickedInEditor =
+								coords != null &&
+								contentRect != null &&
+								coords.x >= contentRect.left &&
+								coords.x <= contentRect.right &&
+								coords.y >= contentRect.top &&
+								coords.y <= contentRect.bottom;
 
-							if (result.found) {
+							if (clickedInEditor) {
+								// Body link click in any mode, or Live Preview body
+								// click. Cursor has moved to the click position by
+								// onClick time, so per-link semantics work.
+								const result = updateLinkUnderCursor(
+									this.app,
+									editor,
+									sourceFile,
+									this.settings,
+								);
 								new Notice(result.message);
 								return;
 							}
 
-							// Fall back to target-matching for the Properties UI
-							// case (Live Preview), where the click happens outside
-							// CodeMirror so the cursor isn't on the link. Restrict
-							// to frontmatter only — body links should never be
-							// touched by a Properties UI right-click.
+							// Properties UI path (Live Preview): the click landed
+							// outside CodeMirror. Resolve alias here (moved from the
+							// menu-creation gate so the no-alias case still surfaces
+							// a notice instead of silently hiding the menu item).
+							const { alias } = resolveAlias(
+								this.app,
+								targetFile.path,
+								"",
+							);
+							if (!alias) {
+								new Notice("No alias found for target");
+								return;
+							}
+
+							// Issue 1 attempt: focus the editor before writing.
+							// editorCallback (command palette) path triggers a
+							// Properties UI re-render after replaceRange; the
+							// file-menu path does not. Hypothesis: focus state
+							// differs because the menu captured focus from the
+							// Properties UI, not from CodeMirror.
+							editor.focus();
+
 							const stats = updateLinksInFile(
 								this.app,
 								editor,
