@@ -1,11 +1,10 @@
-import { Notice, Plugin, TFile, TFolder, type MarkdownView } from "obsidian";
+import { MarkdownView, Notice, Plugin, TFile, TFolder } from "obsidian";
 import { resolveAlias } from "./alias-resolver";
-import { decideRewrite } from "./pipeline";
 import {
 	findFrontmatterLinkOffset,
+	getLinkpathForResolution,
 	getLinkpathFromFrontmatterLink,
 	getYamlSectionRange,
-	toLinkInput,
 } from "./link-filter";
 import {
 	type YesAliasesSettings,
@@ -20,10 +19,25 @@ import {
 
 export default class YesAliasesPlugin extends Plugin {
 	settings!: YesAliasesSettings;
+	/**
+	 * Coordinates of the most recent contextmenu event. Used by the
+	 * editor-menu handler to find the actual clicked position via
+	 * CodeMirror's posAtCoords (editor.getCursor() is stale during
+	 * the contextmenu event).
+	 */
+	private lastContextmenuCoords: { x: number; y: number } | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		this.addSettingTab(new YesAliasesSettingTab(this.app, this));
+		this.registerDomEvent(
+			document,
+			"contextmenu",
+			(evt: MouseEvent) => {
+				this.lastContextmenuCoords = { x: evt.clientX, y: evt.clientY };
+			},
+			{ capture: true },
+		);
 		this.registerCommands();
 		this.registerContextMenus();
 	}
@@ -47,13 +61,13 @@ export default class YesAliasesPlugin extends Plugin {
 			editorCallback: (editor, view) => {
 				const file = view.file;
 				if (!file) return;
-				const message = updateLinkUnderCursor(
+				const result = updateLinkUnderCursor(
 					this.app,
 					editor,
 					file,
 					this.settings,
 				);
-				new Notice(message);
+				new Notice(result.message);
 			},
 		});
 
@@ -126,91 +140,167 @@ export default class YesAliasesPlugin extends Plugin {
 	}
 
 	private registerContextMenus(): void {
+		// Editor-menu handler scoped to source-mode YAML wikilinks. Obsidian
+		// does not fire `file-menu` with `link-context-menu` source for raw
+		// wikilinks inside YAML in source mode, so we need this handler to
+		// surface the menu item there. Body links are NOT handled here —
+		// `file-menu` covers those in any mode, avoiding duplicates.
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu, editor, view) => {
 				const file = (view as MarkdownView).file;
 				if (!file) return;
+				if (!this.settings.updateFrontmatterLinks) return;
+
+				const coords = this.lastContextmenuCoords;
+				if (!coords) return;
+
+				// Use CodeMirror's posAtCoords to get the actual clicked
+				// document offset, avoiding the cursor staleness issue.
+				// `editor.cm` is the underlying CodeMirror 6 EditorView,
+				// not exposed in obsidian.d.ts but stable in practice.
+				const cm = (editor as unknown as {
+					cm?: { posAtCoords: (c: { x: number; y: number }) => number | null };
+				}).cm;
+				if (!cm || typeof cm.posAtCoords !== "function") return;
+				const clickOffset = cm.posAtCoords(coords);
+				if (clickOffset == null) return;
+
+				const cache = this.app.metadataCache.getFileCache(file);
+				if (!cache?.frontmatterLinks || cache.frontmatterLinks.length === 0) return;
+
+				const yamlRange = getYamlSectionRange(cache.sections);
+				if (!yamlRange) return;
+				if (clickOffset < yamlRange.start || clickOffset > yamlRange.end) return;
+
+				// Confirm the click landed on an actual wikilink in YAML.
+				const content = editor.getValue();
+				const searchFrom = new Map<string, number>();
+				let onLink = false;
+				for (const link of cache.frontmatterLinks) {
+					const startFrom = searchFrom.get(link.original) ?? yamlRange.start;
+					const offset = findFrontmatterLinkOffset(
+						content,
+						link.original,
+						startFrom,
+						yamlRange.end,
+					);
+					if (!offset) continue;
+					searchFrom.set(link.original, offset.end);
+					if (clickOffset >= offset.start && clickOffset <= offset.end) {
+						onLink = true;
+						break;
+					}
+				}
+
+				if (!onLink) return;
+
 				menu.addItem((item) => {
 					item.setTitle("Update link alias")
 						.setIcon("links-going-out")
 						.onClick(() => {
-							const message = updateLinkUnderCursor(
+							// By click time the cursor has moved to the
+							// right-clicked position, so updateLinkUnderCursor
+							// finds the correct link.
+							const result = updateLinkUnderCursor(
 								this.app,
 								editor,
 								file,
 								this.settings,
 							);
-							new Notice(message);
+							new Notice(result.message);
 						});
 				});
 			}),
 		);
 
+		// Handler for wikilink right-clicks via Obsidian's link-context-menu
+		// event. Covers body links in any mode and Properties UI links in
+		// Live Preview.
 		this.registerEvent(
-			this.app.workspace.on("file-menu", (menu, abstractFile, source, leaf) => {
+			this.app.workspace.on("file-menu", (menu, abstractFile, source) => {
 				if (source !== "link-context-menu") return;
 				if (!(abstractFile instanceof TFile)) return;
-				if (!this.settings.updateFrontmatterLinks) return;
 
 				const targetFile = abstractFile;
 				const { alias } = resolveAlias(this.app, targetFile.path, "");
 				if (!alias) return;
 
-				const sourceFile = (leaf?.view as MarkdownView)?.file ?? this.app.workspace.getActiveFile();
-				if (!sourceFile) return;
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const sourceFile = view?.file;
+				if (!view || !sourceFile) return;
+
+				const cache = this.app.metadataCache.getFileCache(sourceFile);
+				if (!cache) return;
+
+				// Confirm the source file actually contains a link to the target
+				// (body or frontmatter, depending on settings) before adding the item.
+				const hasBodyMatch =
+					cache.links?.some((link) => {
+						const linkpath = getLinkpathForResolution(link);
+						const resolved = this.app.metadataCache.getFirstLinkpathDest(
+							linkpath,
+							sourceFile.path,
+						);
+						return resolved?.path === targetFile.path;
+					}) ?? false;
+
+				const hasFmMatch =
+					(this.settings.updateFrontmatterLinks &&
+						cache.frontmatterLinks?.some((link) => {
+							const linkpath = getLinkpathFromFrontmatterLink(link);
+							const resolved = this.app.metadataCache.getFirstLinkpathDest(
+								linkpath,
+								sourceFile.path,
+							);
+							return resolved?.path === targetFile.path;
+						})) ?? false;
+
+				if (!hasBodyMatch && !hasFmMatch) return;
 
 				menu.addItem((item) => {
 					item.setTitle("Update link alias")
 						.setIcon("links-going-out")
 						.onClick(() => {
-							const cache = this.app.metadataCache.getFileCache(sourceFile);
-							if (!cache?.frontmatterLinks) return;
-
-							const yamlRange = getYamlSectionRange(cache.sections);
-							if (!yamlRange) return;
-
-							const editor = (leaf?.view as MarkdownView)?.editor;
+							const editor = view.editor;
 							if (!editor) return;
 
-							const content = editor.getValue();
-							const rewrites: Array<{ from: number; to: number; newText: string }> = [];
+							// Try per-link update via cursor first. By the time the
+							// menu item is clicked, the cursor has moved to the
+							// right-clicked link (in source/Live Preview body and
+							// source-mode YAML cases). This preserves the same
+							// per-link semantics as the "Update link under cursor"
+							// command.
+							const result = updateLinkUnderCursor(
+								this.app,
+								editor,
+								sourceFile,
+								this.settings,
+							);
 
-							for (const link of cache.frontmatterLinks) {
-								const linkpath = getLinkpathFromFrontmatterLink(link);
-								const resolved = this.app.metadataCache.getFirstLinkpathDest(
-									linkpath,
-									sourceFile.path,
-								);
-								if (resolved?.path !== targetFile.path) continue;
-
-								const input = toLinkInput(link, alias, this.settings);
-								const decision = decideRewrite(input);
-								if (decision.action !== "rewrite") continue;
-
-								const offset = findFrontmatterLinkOffset(
-									content,
-									link.original,
-									yamlRange.start,
-									yamlRange.end,
-								);
-								if (offset) {
-									rewrites.push({
-										from: offset.start,
-										to: offset.end,
-										newText: decision.newText,
-									});
-								}
+							if (result.found) {
+								new Notice(result.message);
+								return;
 							}
 
-							rewrites.sort((a, b) => b.from - a.from);
-							for (const rewrite of rewrites) {
-								const from = editor.offsetToPos(rewrite.from);
-								const to = editor.offsetToPos(rewrite.to);
-								editor.replaceRange(rewrite.newText, from, to);
-							}
+							// Fall back to target-matching for the Properties UI
+							// case (Live Preview), where the click happens outside
+							// CodeMirror so the cursor isn't on the link. Restrict
+							// to frontmatter only — body links should never be
+							// touched by a Properties UI right-click.
+							const stats = updateLinksInFile(
+								this.app,
+								editor,
+								sourceFile,
+								this.settings,
+								{ targetFile, frontmatterOnly: true },
+							);
 
-							if (rewrites.length > 0) {
-								new Notice(`${rewrites.length} link${rewrites.length > 1 ? "s" : ""} updated: ${alias}`);
+							if (stats.updated === 0) {
+								new Notice("No links to update");
+							} else {
+								new Notice(
+									`${stats.updated} link${stats.updated > 1 ? "s" : ""} updated: ${alias}`,
+								);
 							}
 						});
 				});

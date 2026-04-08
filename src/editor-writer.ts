@@ -18,6 +18,14 @@ export interface WriteStats {
 	skipped: number;
 }
 
+/** Result of attempting to update the link under the cursor. */
+export interface CursorUpdateResult {
+	/** Whether a wikilink was found at the cursor position. */
+	found: boolean;
+	/** User-facing message describing the outcome. */
+	message: string;
+}
+
 /** Map a pipeline skip reason to a user-facing notice message. */
 export function skipReasonMessage(reason: SkipReason): string {
 	switch (reason) {
@@ -30,15 +38,19 @@ export function skipReasonMessage(reason: SkipReason): string {
 	}
 }
 
-/** Update the single wikilink under the cursor. Returns a user-facing message. */
+/**
+ * Update the single wikilink under the cursor.
+ * Returns `{ found: false }` if the cursor is not on a wikilink, allowing
+ * callers to fall back to other strategies (e.g. target-matching).
+ */
 export function updateLinkUnderCursor(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
-): string {
+): CursorUpdateResult {
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache) return "No wikilink under cursor";
+	if (!cache) return { found: false, message: "No wikilink under cursor" };
 
 	const cursor = editor.getCursor();
 	const cursorOffset = editor.posToOffset(cursor);
@@ -61,13 +73,13 @@ export function updateLinkUnderCursor(
 				const decision = decideRewrite(input);
 
 				if (decision.action === "skip") {
-					return skipReasonMessage(decision.reason);
+					return { found: true, message: skipReasonMessage(decision.reason) };
 				}
 
 				const from = editor.offsetToPos(link.position.start.offset);
 				const to = editor.offsetToPos(link.position.end.offset);
 				editor.replaceRange(decision.newText, from, to);
-				return `Link updated: ${alias}`;
+				return { found: true, message: `Link updated: ${alias}` };
 			}
 		}
 	}
@@ -99,31 +111,45 @@ export function updateLinkUnderCursor(
 				const decision = decideRewrite(input);
 
 				if (decision.action === "skip") {
-					return skipReasonMessage(decision.reason);
+					return { found: true, message: skipReasonMessage(decision.reason) };
 				}
 
 				const from = editor.offsetToPos(offset.start);
 				const to = editor.offsetToPos(offset.end);
 				editor.replaceRange(decision.newText, from, to);
-				return `Link updated: ${alias}`;
+				return { found: true, message: `Link updated: ${alias}` };
 			}
 		}
 	}
 
-	return "No wikilink under cursor";
+	return { found: false, message: "No wikilink under cursor" };
 }
 
-/** Update all qualifying wikilinks in the active file. Returns stats. */
+/** Options for updateLinksInFile. */
+export interface UpdateLinksInFileOptions {
+	/** If provided, only links resolving to this file are updated. */
+	targetFile?: TFile;
+	/** If true, only frontmatter links are processed (body links untouched). */
+	frontmatterOnly?: boolean;
+}
+
+/**
+ * Update all qualifying wikilinks in the active file. Returns stats.
+ * Use `options.targetFile` to scope to a single target, and
+ * `options.frontmatterOnly` to skip body links entirely.
+ */
 export function updateLinksInFile(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
+	options: UpdateLinksInFileOptions = {},
 ): WriteStats {
+	const { targetFile, frontmatterOnly = false } = options;
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache) return { updated: 0, skipped: 0 };
 
-	const hasBodyLinks = cache.links && cache.links.length > 0;
+	const hasBodyLinks = !frontmatterOnly && cache.links && cache.links.length > 0;
 	const hasFmLinks =
 		settings.updateFrontmatterLinks &&
 		cache.frontmatterLinks &&
@@ -150,6 +176,10 @@ export function updateLinksInFile(
 			}
 
 			const linkpath = getLinkpathForResolution(link);
+			if (targetFile) {
+				const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+				if (resolved?.path !== targetFile.path) continue;
+			}
 			const { alias } = resolveAlias(app, linkpath, file.path);
 			const input = toLinkInput(link, alias, settings);
 			const decision = decideRewrite(input);
@@ -173,6 +203,10 @@ export function updateLinksInFile(
 			const searchFrom = new Map<string, number>();
 			for (const link of cache.frontmatterLinks!) {
 				const linkpath = getLinkpathFromFrontmatterLink(link);
+				if (targetFile) {
+					const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+					if (resolved?.path !== targetFile.path) continue;
+				}
 				const { alias } = resolveAlias(app, linkpath, file.path);
 				const input = toLinkInput(link, alias, settings);
 				const decision = decideRewrite(input);
