@@ -1,9 +1,12 @@
 import type { App, Editor, TFile } from "obsidian";
-import { decideRewrite } from "./pipeline";
+import { decideRewrite, type SkipReason } from "./pipeline";
 import { resolveAlias } from "./alias-resolver";
 import {
 	buildExcludedRanges,
+	findFrontmatterLinkOffset,
 	getLinkpathForResolution,
+	getLinkpathFromFrontmatterLink,
+	getYamlSectionRange,
 	isLinkExcluded,
 	toLinkInput,
 } from "./link-filter";
@@ -15,70 +18,148 @@ export interface WriteStats {
 	skipped: number;
 }
 
-/** Update the single wikilink under the cursor. Returns a user-facing message. */
+/** Result of attempting to update the link under the cursor. */
+export interface CursorUpdateResult {
+	/** Whether a wikilink was found at the cursor position. */
+	found: boolean;
+	/** User-facing message describing the outcome. */
+	message: string;
+}
+
+/** Map a pipeline skip reason to a user-facing notice message. */
+export function skipReasonMessage(reason: SkipReason): string {
+	switch (reason) {
+		case "no-alias":
+			return "No alias found for target";
+		case "has-display-text":
+			return "Skipped — display text already set";
+		case "already-correct":
+			return "Link already up to date";
+	}
+}
+
+/**
+ * Update the single wikilink under the cursor.
+ * Returns `{ found: false }` if the cursor is not on a wikilink, allowing
+ * callers to fall back to other strategies (e.g. target-matching).
+ */
 export function updateLinkUnderCursor(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
-): string {
+): CursorUpdateResult {
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache?.links || cache.links.length === 0) {
-		return "No wikilink under cursor";
-	}
+	if (!cache) return { found: false, message: "No wikilink under cursor" };
 
 	const cursor = editor.getCursor();
 	const cursorOffset = editor.posToOffset(cursor);
-
-	const link = cache.links.find(
-		(l) =>
-			cursorOffset >= l.position.start.offset &&
-			cursorOffset <= l.position.end.offset,
-	);
-
-	if (!link) {
-		return "No wikilink under cursor";
-	}
-
 	const content = editor.getValue();
-	const excludedRanges = buildExcludedRanges(cache.sections);
 
-	if (isLinkExcluded(link, content, excludedRanges)) {
-		return "No wikilink under cursor";
+	// Try body links first
+	if (cache.links) {
+		const link = cache.links.find(
+			(l) =>
+				cursorOffset >= l.position.start.offset &&
+				cursorOffset <= l.position.end.offset,
+		);
+
+		if (link) {
+			const excludedRanges = buildExcludedRanges(cache.sections);
+			if (!isLinkExcluded(link, content, excludedRanges)) {
+				const linkpath = getLinkpathForResolution(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					return { found: true, message: skipReasonMessage(decision.reason) };
+				}
+
+				const from = editor.offsetToPos(link.position.start.offset);
+				const to = editor.offsetToPos(link.position.end.offset);
+				editor.replaceRange(decision.newText, from, to);
+				return { found: true, message: `Link updated: ${alias}` };
+			}
+		}
 	}
 
-	const linkpath = getLinkpathForResolution(link);
-	const { alias } = resolveAlias(app, linkpath, file.path);
-	const input = toLinkInput(link, alias, settings);
-	const decision = decideRewrite(input);
+	// Fall through to frontmatter links — find all occurrences to handle duplicates
+	if (
+		settings.updateFrontmatterLinks &&
+		cache.frontmatterLinks &&
+		cache.frontmatterLinks.length > 0
+	) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			const searchFrom = new Map<string, number>();
+			for (const link of cache.frontmatterLinks) {
+				const startFrom = searchFrom.get(link.original) ?? yamlRange.start;
+				const offset = findFrontmatterLinkOffset(
+					content,
+					link.original,
+					startFrom,
+					yamlRange.end,
+				);
+				if (!offset) continue;
+				searchFrom.set(link.original, offset.end);
+				if (cursorOffset < offset.start || cursorOffset > offset.end) continue;
 
-	if (decision.action === "skip") {
-		if (decision.reason === "no-alias") return "No alias found for target";
-		return "Link already up to date";
+				const linkpath = getLinkpathFromFrontmatterLink(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					return { found: true, message: skipReasonMessage(decision.reason) };
+				}
+
+				const from = editor.offsetToPos(offset.start);
+				const to = editor.offsetToPos(offset.end);
+				editor.replaceRange(decision.newText, from, to);
+				return { found: true, message: `Link updated: ${alias}` };
+			}
+		}
 	}
 
-	const from = editor.offsetToPos(link.position.start.offset);
-	const to = editor.offsetToPos(link.position.end.offset);
-	editor.replaceRange(decision.newText, from, to);
-
-	return `Link updated: ${alias}`;
+	return { found: false, message: "No wikilink under cursor" };
 }
 
-/** Update all qualifying wikilinks in the active file. Returns stats. */
+/** Options for updateLinksInFile. */
+export interface UpdateLinksInFileOptions {
+	/** If provided, only links resolving to this file are updated. */
+	targetFile?: TFile;
+	/** If true, only frontmatter links are processed (body links untouched). */
+	frontmatterOnly?: boolean;
+}
+
+/**
+ * Update all qualifying wikilinks in the active file. Returns stats.
+ * Use `options.targetFile` to scope to a single target, and
+ * `options.frontmatterOnly` to skip body links entirely.
+ */
 export function updateLinksInFile(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
+	options: UpdateLinksInFileOptions = {},
 ): WriteStats {
+	const { targetFile, frontmatterOnly = false } = options;
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache?.links || cache.links.length === 0) {
+	if (!cache) return { updated: 0, skipped: 0 };
+
+	const hasBodyLinks = !frontmatterOnly && cache.links && cache.links.length > 0;
+	const hasFmLinks =
+		settings.updateFrontmatterLinks &&
+		cache.frontmatterLinks &&
+		cache.frontmatterLinks.length > 0;
+
+	if (!hasBodyLinks && !hasFmLinks) {
 		return { updated: 0, skipped: 0 };
 	}
 
 	const content = editor.getValue();
-	const excludedRanges = buildExcludedRanges(cache.sections);
-
 	const rewrites: Array<{
 		from: number;
 		to: number;
@@ -86,27 +167,74 @@ export function updateLinksInFile(
 	}> = [];
 	let skipped = 0;
 
-	for (const link of cache.links) {
-		if (isLinkExcluded(link, content, excludedRanges)) {
-			continue;
-		}
+	// Body links
+	if (hasBodyLinks) {
+		const excludedRanges = buildExcludedRanges(cache.sections);
+		for (const link of cache.links!) {
+			if (isLinkExcluded(link, content, excludedRanges)) {
+				continue;
+			}
 
-		const linkpath = getLinkpathForResolution(link);
-		const { alias } = resolveAlias(app, linkpath, file.path);
-		const input = toLinkInput(link, alias, settings);
-		const decision = decideRewrite(input);
+			const linkpath = getLinkpathForResolution(link);
+			if (targetFile) {
+				const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+				if (resolved?.path !== targetFile.path) continue;
+			}
+			const { alias } = resolveAlias(app, linkpath, file.path);
+			const input = toLinkInput(link, alias, settings);
+			const decision = decideRewrite(input);
 
-		if (decision.action === "skip") {
-			skipped++;
-		} else {
-			rewrites.push({
-				from: link.position.start.offset,
-				to: link.position.end.offset,
-				newText: decision.newText,
-			});
+			if (decision.action === "skip") {
+				skipped++;
+			} else {
+				rewrites.push({
+					from: link.position.start.offset,
+					to: link.position.end.offset,
+					newText: decision.newText,
+				});
+			}
 		}
 	}
 
+	// Frontmatter links — track search positions to handle duplicate originals
+	if (hasFmLinks) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			const searchFrom = new Map<string, number>();
+			for (const link of cache.frontmatterLinks!) {
+				const linkpath = getLinkpathFromFrontmatterLink(link);
+				if (targetFile) {
+					const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+					if (resolved?.path !== targetFile.path) continue;
+				}
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+				const decision = decideRewrite(input);
+
+				if (decision.action === "skip") {
+					skipped++;
+				} else {
+					const startFrom = searchFrom.get(link.original) ?? yamlRange.start;
+					const offset = findFrontmatterLinkOffset(
+						content,
+						link.original,
+						startFrom,
+						yamlRange.end,
+					);
+					if (offset) {
+						rewrites.push({
+							from: offset.start,
+							to: offset.end,
+							newText: decision.newText,
+						});
+						searchFrom.set(link.original, offset.end);
+					}
+				}
+			}
+		}
+	}
+
+	// Apply all rewrites in reverse offset order
 	rewrites.sort((a, b) => b.from - a.from);
 
 	for (const rewrite of rewrites) {

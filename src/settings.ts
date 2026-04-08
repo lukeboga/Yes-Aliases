@@ -5,12 +5,15 @@ import type YesAliasesPlugin from "./main";
 export interface YesAliasesSettings {
 	/** When true, replace existing display text with the alias. When false, skip links that already have display text. */
 	overwriteExisting: boolean;
+	/** When true, wikilinks inside frontmatter properties are included in alias updates. When false, only body links are updated. */
+	updateFrontmatterLinks: boolean;
 	/** Folder paths (relative to vault root) excluded from folder and vault-wide operations. Prefix-matched. */
 	ignoredFolders: string[];
 }
 
 export const DEFAULT_SETTINGS: YesAliasesSettings = {
 	overwriteExisting: false,
+	updateFrontmatterLinks: true,
 	ignoredFolders: [],
 };
 
@@ -37,6 +40,20 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.overwriteExisting)
 					.onChange(async (value) => {
 						this.plugin.settings.overwriteExisting = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Update frontmatter links")
+			.setDesc(
+				"When enabled, wikilinks inside frontmatter properties are included in alias updates. When disabled, only body links are updated.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.updateFrontmatterLinks)
+					.onChange(async (value) => {
+						this.plugin.settings.updateFrontmatterLinks = value;
 						await this.plugin.saveSettings();
 					}),
 			);

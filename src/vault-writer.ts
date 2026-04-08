@@ -10,6 +10,8 @@ import { resolveAlias } from "./alias-resolver";
 import {
 	buildExcludedRanges,
 	getLinkpathForResolution,
+	getLinkpathFromFrontmatterLink,
+	getYamlSectionRange,
 	isEmbed,
 	isInsideInlineCode,
 	isInsideSection,
@@ -31,6 +33,51 @@ interface PlannedRewrite {
 	endOffset: number;
 	original: string;
 	newText: string;
+}
+
+export interface FrontmatterRewrite {
+	original: string;
+	newText: string;
+}
+
+/**
+ * Apply frontmatter rewrites using bounded string replacement within the YAML section.
+ * Deduplicates by original text. Does not modify content outside YAML bounds.
+ */
+export function applyFrontmatterRewrites(
+	content: string,
+	rewrites: FrontmatterRewrite[],
+	yamlStart: number,
+	yamlEnd: number,
+): { content: string; applied: number } {
+	if (rewrites.length === 0) return { content, applied: 0 };
+
+	const unique = new Map<string, string>();
+	for (const r of rewrites) {
+		unique.set(r.original, r.newText);
+	}
+
+	let frontmatter = content.slice(yamlStart, yamlEnd);
+	let applied = 0;
+
+	for (const [original, newText] of unique) {
+		let count = 0;
+		let idx = frontmatter.indexOf(original);
+		while (idx !== -1) {
+			count++;
+			idx = frontmatter.indexOf(original, idx + original.length);
+		}
+		if (count > 0) {
+			frontmatter = frontmatter.split(original).join(newText);
+			applied += count;
+		}
+	}
+
+	if (applied === 0) return { content, applied: 0 };
+	return {
+		content: content.slice(0, yamlStart) + frontmatter + content.slice(yamlEnd),
+		applied,
+	};
 }
 
 /**
@@ -59,6 +106,13 @@ function collectMarkdownFiles(folder: TFolder): TFile[] {
 	return files;
 }
 
+interface PlannedRewrites {
+	body: PlannedRewrite[];
+	frontmatter: FrontmatterRewrite[];
+	yamlStart: number;
+	yamlEnd: number;
+}
+
 /**
  * Pre-filter phase: determine which rewrites are needed for a single file
  * using only the metadata cache (no file I/O).
@@ -67,45 +121,72 @@ function planRewrites(
 	app: App,
 	file: TFile,
 	settings: YesAliasesSettings,
-): PlannedRewrite[] {
+): PlannedRewrites {
 	const cache = app.metadataCache.getFileCache(file);
-	if (!cache?.links || cache.links.length === 0) return [];
+	const body: PlannedRewrite[] = [];
+	const frontmatter: FrontmatterRewrite[] = [];
+	let yamlStart = 0;
+	let yamlEnd = 0;
 
-	const excludedRanges = buildExcludedRanges(cache.sections);
-	const planned: PlannedRewrite[] = [];
+	if (cache?.links) {
+		const excludedRanges = buildExcludedRanges(cache.sections);
+		for (const link of cache.links) {
+			const startOffset = link.position.start.offset;
+			const endOffset = link.position.end.offset;
 
-	for (const link of cache.links) {
-		const startOffset = link.position.start.offset;
-		const endOffset = link.position.end.offset;
+			if (isInsideSection(startOffset, endOffset, excludedRanges)) continue;
 
-		if (isInsideSection(startOffset, endOffset, excludedRanges)) continue;
+			const linkpath = getLinkpathForResolution(link);
+			const { alias } = resolveAlias(app, linkpath, file.path);
+			const input = toLinkInput(link, alias, settings);
 
-		const linkpath = getLinkpathForResolution(link);
-		const { alias } = resolveAlias(app, linkpath, file.path);
-		const input = toLinkInput(link, alias, settings);
-
-		const decision = decideRewrite(input);
-		if (decision.action === "rewrite") {
-			planned.push({
-				startOffset,
-				endOffset,
-				original: link.original,
-				newText: decision.newText,
-			});
+			const decision = decideRewrite(input);
+			if (decision.action === "rewrite") {
+				body.push({
+					startOffset,
+					endOffset,
+					original: link.original,
+					newText: decision.newText,
+				});
+			}
 		}
 	}
 
-	return planned;
+	if (settings.updateFrontmatterLinks && cache?.frontmatterLinks) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			yamlStart = yamlRange.start;
+			yamlEnd = yamlRange.end;
+			for (const link of cache.frontmatterLinks) {
+				const linkpath = getLinkpathFromFrontmatterLink(link);
+				const { alias } = resolveAlias(app, linkpath, file.path);
+				const input = toLinkInput(link, alias, settings);
+
+				const decision = decideRewrite(input);
+				if (decision.action === "rewrite") {
+					frontmatter.push({
+						original: link.original,
+						newText: decision.newText,
+					});
+				}
+			}
+		}
+	}
+
+	return { body, frontmatter, yamlStart, yamlEnd };
 }
 
 /**
  * Apply planned rewrites to file content inside vault.process().
- * Verifies each rewrite against actual content before applying.
- * Skips inline code and embed links using content inspection.
- * Works in reverse offset order to preserve positions.
+ * Body rewrites: verifies against actual content, skips inline code and embeds.
+ * Frontmatter rewrites: bounded string replacement within YAML section.
+ * Body rewrites applied first (higher offsets), then frontmatter (top of file).
  */
-function applyRewrites(content: string, planned: PlannedRewrite[]): { content: string; applied: number } {
-	const sorted = [...planned].sort((a, b) => b.startOffset - a.startOffset);
+function applyRewrites(
+	content: string,
+	planned: PlannedRewrites,
+): { content: string; applied: number } {
+	const sorted = [...planned.body].sort((a, b) => b.startOffset - a.startOffset);
 	let result = content;
 	let applied = 0;
 
@@ -113,7 +194,6 @@ function applyRewrites(content: string, planned: PlannedRewrite[]): { content: s
 		const actual = result.slice(rewrite.startOffset, rewrite.endOffset);
 		if (actual !== rewrite.original) continue;
 
-		// Check against original content, not mutated result
 		if (isInsideInlineCode(content, rewrite.startOffset, rewrite.endOffset)) continue;
 		if (isEmbed(content, rewrite.startOffset)) continue;
 
@@ -122,6 +202,17 @@ function applyRewrites(content: string, planned: PlannedRewrite[]): { content: s
 			rewrite.newText +
 			result.slice(rewrite.endOffset);
 		applied++;
+	}
+
+	if (planned.frontmatter.length > 0) {
+		const fm = applyFrontmatterRewrites(
+			result,
+			planned.frontmatter,
+			planned.yamlStart,
+			planned.yamlEnd,
+		);
+		result = fm.content;
+		applied += fm.applied;
 	}
 
 	return { content: result, applied };
@@ -166,11 +257,11 @@ async function executeBulk(
 	files: TFile[],
 	settings: YesAliasesSettings,
 ): Promise<BulkWriteStats> {
-	const plan = new Map<TFile, PlannedRewrite[]>();
+	const plan = new Map<TFile, PlannedRewrites>();
 
 	for (const file of files) {
 		const rewrites = planRewrites(app, file, settings);
-		if (rewrites.length > 0) {
+		if (rewrites.body.length > 0 || rewrites.frontmatter.length > 0) {
 			plan.set(file, rewrites);
 		}
 	}
@@ -187,7 +278,7 @@ async function executeBulk(
 				planned,
 			);
 			totalUpdated += applied;
-			totalSkipped += planned.length - applied;
+			totalSkipped += planned.body.length + planned.frontmatter.length - applied;
 			filesProcessed++;
 			return newContent;
 		});

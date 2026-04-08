@@ -102,6 +102,15 @@ export function buildExcludedRanges(
 	return excluded;
 }
 
+/**
+ * Extract the linkpath (without subpath) from a FrontmatterLinkCache for resolution.
+ * Uses `link.link` directly (already the link destination), then strips any hash.
+ */
+export function getLinkpathFromFrontmatterLink(link: { link: string }): string {
+	const hashIndex = link.link.indexOf("#");
+	return hashIndex === -1 ? link.link : link.link.slice(0, hashIndex);
+}
+
 /** Extract the linkpath portion (without subpath) from a link for resolution. */
 export function getLinkpathForResolution(link: LinkCache): string {
 	const full = extractLinkPath(link.original);
@@ -110,11 +119,11 @@ export function getLinkpathForResolution(link: LinkCache): string {
 }
 
 /**
- * Parse a LinkCache entry into a LinkInput for the pipeline.
- * Uses the link's `original` field to determine explicit display text.
+ * Parse a link entry into a LinkInput for the pipeline.
+ * Accepts any object with an `original` field (LinkCache or FrontmatterLinkCache).
  */
 export function toLinkInput(
-	link: LinkCache,
+	link: { original: string },
 	alias: string | null,
 	settings: YesAliasesSettings,
 ): LinkInput {
@@ -131,6 +140,39 @@ export function toLinkInput(
 		targetAlias: alias,
 		overwriteExisting: settings.overwriteExisting,
 	};
+}
+
+/**
+ * Get the YAML frontmatter section's offset range from cached sections.
+ * Returns null if no YAML section exists.
+ */
+export function getYamlSectionRange(
+	sections: SectionCache[] | undefined,
+): OffsetRange | null {
+	if (!sections) return null;
+	const yaml = sections.find((s) => s.type === "yaml");
+	if (!yaml) return null;
+	return {
+		start: yaml.position.start.offset,
+		end: yaml.position.end.offset,
+	};
+}
+
+/**
+ * Find the offset of a frontmatter link's `original` text within the YAML section.
+ * Returns start/end offsets, or null if the link text isn't found within bounds.
+ */
+export function findFrontmatterLinkOffset(
+	content: string,
+	original: string,
+	yamlStart: number,
+	yamlEnd: number,
+): OffsetRange | null {
+	const index = content.indexOf(original, yamlStart);
+	if (index === -1 || index + original.length > yamlEnd) {
+		return null;
+	}
+	return { start: index, end: index + original.length };
 }
 
 /**

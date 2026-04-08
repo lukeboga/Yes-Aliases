@@ -7,6 +7,16 @@ For older entries, see [changelog archive](changelog/archive/).
 
 ## [Unreleased]
 
+### Added
+- Frontmatter link support — alias propagation for wikilinks inside frontmatter properties (all scopes: cursor, file, folder, vault)
+- "Update link alias" right-click action for body wikilinks (any mode), source-mode YAML wikilinks, and Properties UI links in Live Preview
+- `updateFrontmatterLinks` setting (default: on) to toggle frontmatter link processing
+- Manual testing guide (`docs/manual-testing.md`)
+
+### Fixed
+- Alias resolution now handles `alias` (singular) frontmatter key via `parseFrontMatterStringArray` fallback
+- "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off
+
 ### Changed
 - Migrate from multi-plugin monorepo to single-plugin release structure
 - Rename from "Aliases Hub" to "Yes Aliases"
