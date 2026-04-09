@@ -561,3 +561,208 @@ These procedures cover the new command families added in 0004. Each is copy-past
 1. **Setup:** Same file in Live Preview. The frontmatter renders as the Properties panel.
 2. **Action:** Right-click the link in the Properties panel.
 3. **Expected:** **"Remove link alias"** appears. Clicking it strips display text from **all** frontmatter links to that target (documented limitation, mirrors the existing update behavior).
+
+---
+
+## 10. CLI-driven dogfood automation
+
+This section captures the dogfood automation patterns developed during sessions 011–012. When running structured scenario tests against the dev vault, these patterns let you drive most of this document via `obsidian eval` + the `obsidian` CLI, reserving manual (eyes-on) steps for UX/rendering checks where the CLI cannot faithfully substitute.
+
+**Not applicable to:** the scenario prose above in sections 1–9, which remains the canonical source of truth for what should be tested. Section 10 only describes *how* to drive the scenarios when automating rather than clicking through by hand.
+
+### 10.1 When to use CLI-driven vs manual
+
+| Category | CLI-driven | Manual (eyes-on) |
+|---|---|---|
+| File/folder/vault scope commands via palette | ✅ Faithful: `executeCommandById` + `vault.read`/`editor.getValue` + `.notice` DOM capture | — |
+| Cursor-scope commands (body links, both modes) | ✅ Via `editor.setCursor` + `executeCommandById` — verified faithful for body links; session 011 FM-LP bug was specific to YAML editor, not body cursor | — |
+| Context menu items (file-menu, editor-menu) | ✅ Via synthetic Menu shim (see §10.5) | Eyes-on for initial verification that menu items appear, labels read correctly, ordering feels right |
+| Settings tab walkthrough | — | Manual — eyes-on for sentence case, control layout, accessibility |
+| Live Preview visual rendering | — | Manual — only eyes can verify widget rendering, Properties panel behavior |
+| Auto-propagation timing / feedback loops | ✅ With explicit waits (§10.4) | — |
+| Plugin reload verification | ✅ `obsidian plugin:reload id=yes-aliases` + `dev:errors` | — |
+
+### 10.2 Complex eval via `/tmp/*.js` heredoc (CRITICAL pattern)
+
+Multi-line async IIFEs with template literals passed directly to `obsidian eval code="..."` **silently fail** — the command returns empty output with no error. Simple single-expression evals work fine.
+
+**Workaround that is 100% reliable:**
+
+```bash
+cat > /tmp/yatest-something.js <<'JSEOF'
+(async () => {
+  try {
+    // ... your complex test code here ...
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message + ' :: ' + (e.stack || '');
+  }
+})()
+JSEOF
+CODE=$(cat /tmp/yatest-something.js); obsidian eval code="$CODE"
+```
+
+Notes:
+- Use single-quoted `'JSEOF'` heredoc terminator so bash does not expand `$` or backticks inside the JS.
+- Always wrap in `try/catch` so silent failures become visible as `ERROR: ...` in the eval return.
+- `/tmp/yatest-*.js` is the naming convention — disposable, OS-cleaned, greppable.
+- For short one-line evals, inline `obsidian eval code="..."` is fine.
+
+### 10.3 Result capture via vault JSON artifact
+
+For complex test results (nested objects, arrays, multi-case batches), `obsidian eval` stdout can be unreliable for round-tripping. Write the result to a JSON file inside the vault and read it back via `obsidian read`:
+
+```js
+const p = '_staging-v0.1.0/_results-NAME.json';
+const existing = app.vault.getAbstractFileByPath(p);
+if (existing) await app.vault.modify(existing, JSON.stringify(results, null, 2));
+else await app.vault.create(p, JSON.stringify(results, null, 2));
+return 'wrote ' + results.length + ' entries';
+```
+
+Then in bash:
+
+```bash
+obsidian read path="_staging-v0.1.0/_results-NAME.json"
+```
+
+**Clean up these `_results-*.json` / `_debug*.json` artifacts at session end** — via `app.vault.trash(file, true)` for each. They are session-scoped and should not be committed.
+
+### 10.4 Timing (load-bearing for flake-free automation)
+
+- **After `app.vault.modify`:** wait **≥ 1500 ms** before placing the cursor, reading the metadata cache, or running a command that depends on fresh cache. Obsidian's metadata cache update trails disk writes by ~1 s. Tight loops (`modify → setCursor → command`) without this wait produce false negatives where the command reports `"No wikilink under cursor"` or fails to find links that are visibly present in the file.
+- **After `app.commands.executeCommandById`:** wait **≥ 2500 ms** before reading file state, especially for bulk (folder/vault) commands. The notice and file write can complete in stages.
+- **Between cases in a batch test:** `reset()` then wait **≥ 2000 ms** so debounced auto-propagate handlers (500 ms debounce per `auto-propagate.ts::DEBOUNCE_MS`) fire and settle before the next case.
+- **Editor flush-lag (session-011 caveat):** body changes via `applyChangesInEditor` (i.e., `updateLinksInFile`/`removeLinksInFile` body-only paths) write via `editor.replaceRange` but the disk file may not reflect the change for 1–2 s. Prefer `editor.getValue()` over `vault.read()` when verifying body-only changes. FM-path changes go through `vault.process` and are on disk immediately.
+
+### 10.5 Synthetic Menu shim for file-menu and editor-menu automation
+
+Right-click context menu items can't be driven directly from `obsidian eval`. The workaround is a fake Menu object that captures `addItem` callbacks. Trigger the workspace event with this fake menu, find the captured item by title, call its `_onClick`.
+
+**Complete shim — add all stub methods to avoid `dev:errors` noise from Obsidian's own listeners:**
+
+```js
+const makeFakeMenu = () => {
+  const captured = [];
+  const fakeMenu = {
+    addItem: (cb) => {
+      const item = {
+        _title: '', _icon: '', _onClick: null,
+        setTitle(t) { this._title = t; return this; },
+        setIcon(i) { this._icon = i; return this; },
+        onClick(fn) { this._onClick = fn; return this; },
+        setSection() { return this; },
+        setDisabled() { return this; },
+        setSubmenu() { return this; },
+        setChecked() { return this; },
+        setSectionSubmenu() { return this; },
+      };
+      cb(item);
+      captured.push(item);
+      return fakeMenu;
+    },
+    addSeparator() { return fakeMenu; },
+  };
+  return { fakeMenu, captured };
+};
+```
+
+**Note (session 012):** `setSectionSubmenu` was added to this shim during session 012. Prior handoffs (session 011) had `setSection` but missed `setSectionSubmenu`, producing `TypeError: e.setSectionSubmenu is not a function` in captured errors. Both are test-scaffold noise (our plugin's items only use `setTitle`/`setIcon`/`onClick`), but extending the shim keeps `dev:errors` clean.
+
+**Triggering the events:**
+
+```js
+// Folder file-menu (on a TFolder target)
+app.workspace.trigger('file-menu', fakeMenu, folder, 'file-explorer-context-menu');
+
+// Body-link file-menu (on a TFile target — the wikilink's resolved target file)
+app.workspace.trigger('file-menu', fakeMenu, targetFile, 'link-context-menu');
+
+// Editor menu (for source-mode YAML wikilinks)
+app.workspace.trigger('editor-menu', fakeMenu, editor, view);
+```
+
+**Finding the item:** `captured.find(i => i._title === 'Exact Title Here')`. Always dump `captured.map(i => i._title)` once to confirm the exact title before hardcoding it. As of v0.1.0 the canonical titles are:
+
+| Title | Trigger source |
+|---|---|
+| `Update link alias` | file-menu, link-context-menu (body links) |
+| `Remove link alias` | file-menu, link-context-menu (body links) |
+| `Update link aliases in folder` | file-menu, file-explorer-context-menu |
+| `Propagate aliases for files in folder` | file-menu, file-explorer-context-menu |
+| `Remove link aliases in folder` | file-menu, file-explorer-context-menu |
+
+### 10.6 Body-link file-menu disambiguation (editor vs Properties UI)
+
+The body-link file-menu handler in `src/main.ts` has two branches keyed off `this.lastContextmenuCoords`:
+- **Editor path** — click landed inside the CodeMirror `contentDOM` rect. Delegates to `updateLinkUnderCursor` / `removeLinkUnderCursor` against the current cursor position.
+- **Properties UI path (LP only)** — click landed outside the `contentDOM` rect (i.e., on the Properties widget). Delegates to `updateLinksInFile` / `removeLinksInFile` with `{targetFile, frontmatterOnly: true}`.
+
+To force the **editor path** in a CLI test: place the cursor on the link, then set `plugin.lastContextmenuCoords = {x: rect.left + 10, y: rect.top + 10}` where `rect = editor.cm.contentDOM.getBoundingClientRect()`. The `plugin` reference is `app.plugins.plugins['yes-aliases']`. The field is `private` in TypeScript but accessible at runtime.
+
+To force the **Properties UI path**: set `plugin.lastContextmenuCoords = null` (or coords outside the `contentDOM` rect).
+
+### 10.7 Notice capture
+
+Notices render as `.notice` DOM elements and auto-fade after ~4–5 s. Capture within the eval IIFE, immediately after the command:
+
+```js
+document.querySelectorAll('.notice').forEach(n => n.remove());  // clear before command
+await app.commands.executeCommandById('yes-aliases:...');
+await new Promise(r => setTimeout(r, 800));
+const notices = Array.from(document.querySelectorAll('.notice')).map(n => n.textContent);
+```
+
+Do not capture in a separate eval after a wait — notices will be gone.
+
+### 10.8 Scope-limiting vault-wide tests via `ignoredFolders`
+
+To run vault-wide commands but scope them to a specific fixture folder (e.g., `_staging-v0.1.0/`), add every *other* top-level folder to `ignoredFolders` temporarily. Always capture the original value and restore in a try/finally (or equivalent):
+
+```js
+const plugin = app.plugins.plugins['yes-aliases'];
+const originalIgnored = [...plugin.settings.ignoredFolders];
+plugin.settings.ignoredFolders = ['__meta__', '_development', 'ntag', '_staging-v0.1.0/_archive'];
+await plugin.saveSettings();
+try {
+  // ... run vault-scope tests ...
+} finally {
+  plugin.settings.ignoredFolders = originalIgnored;
+  await plugin.saveSettings();
+}
+```
+
+### 10.9 Auto-propagate state inspection
+
+`plugin.autoPropagate` is an `AutoPropagationManager` instance. Its private maps are accessible at runtime:
+
+```js
+const ap = app.plugins.plugins['yes-aliases'].autoPropagate;
+const snapshot = Object.fromEntries(ap.aliasSnapshot);      // path → alias array
+const recent = [...ap.recentlyCreated.keys()];              // paths with active TTL
+const inflight = Object.fromEntries(ap.inFlightWrites);     // path → last-write ts
+// debugSize() is a public method that returns counts for all four maps
+const counts = ap.debugSize();
+```
+
+**Post-BUG-#8-fix observable:** immediately after `obsidian plugin:reload id=yes-aliases`, `recent.length` must be `0` (until the user creates a genuinely new file). On the pre-fix build this returns 30+ because `vault.on('create')` fired for every existing file during initial index.
+
+### 10.10 Character positions for cursor placement
+
+When using `editor.setCursor({line, ch})`, the `line` is 0-indexed from the start of the file and `ch` is 0-indexed from the start of the line. LF linebreaks. For a canonical smoke-test source file with layout:
+
+```
+# Source
+
+Bare link: [[target]]
+
+Alias match (canonical): [[target|Alpha Display]]
+
+Alias match (historical): [[target|Alpha Legacy]]
+
+Prose display (should be preserved): [[target|some prose]]
+```
+
+…the line indices are 0,2,4,6,8 (evens are content, odds are blank). Character offsets inside each link are roughly `ch 20`, `ch 35`, `ch 35`, `ch 45` for lines 2/4/6/8 respectively (depends on the exact target path length).
+
+---
