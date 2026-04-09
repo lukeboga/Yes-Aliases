@@ -106,6 +106,48 @@ Short-lived context bridges between consecutive sessions. One file per handoff.
 - Name files, paths, functions — never say "the main file" or "the config"
 - Decisions need rationale, not just outcomes
 
+### Multi-session plan execution
+
+When a plan is large enough to span multiple sessions (rule of thumb: more than ~1500 lines, more than ~3 phases, or more than a single session of context), the handoff protocol is insufficient on its own — handoffs are transient and the next session will not re-read stale ones. Use these additional mechanisms:
+
+**Session ledger at the top of the plan doc.**
+
+Every multi-session plan must include a mutable status table near the top of the plan doc itself — not in a handoff, not in `state.md`. The ledger is the single source of truth for "where are we in this plan right now". Minimum columns:
+
+| Phase | Scope | Status | Last commit | Tests | Handoff |
+
+Status values: `not started` / `in-progress` / `verified` (phase verify gate passed) / `blocked` (with reason). Update the ledger at the end of every session that touches the plan. Read it at the start of every session. `verified` means the phase's verify gate (`npm test && npm run lint && npm run build`, plus reload/dev-errors for phases that add runtime surface) has passed cleanly.
+
+**Baseline test count.**
+
+Record the pre-implementation test count somewhere in the plan (usually in the ledger preamble). Any handoff reporting fewer tests than baseline indicates a regression that must be fixed before the next phase starts.
+
+**Phase-boundary stop rule.**
+
+Stop at phase verify gates, never mid-phase unless context forces it. Phase boundaries are verify-clean points; mid-phase stops leave the repo in an inconsistent state (failing tests, partial implementations, unreviewed code). If a mid-phase handoff is unavoidable, record the exact in-progress task number in the ledger's Status column (e.g., `in-progress: 3.2 step 3 of 6`) so the next session can resume at the right step.
+
+**Single-file plan is the default.**
+
+Resist splitting plans into phase files. Cross-phase type dependencies, global load-bearing constraints at the top of the plan, and holistic self-review traceability all become lossy at reference sites when split. Splitting is reasonable only when phases are genuinely independent (no shared types, no shared test files, no forward references) — and in that case they should probably be separate plans, not subfiles of one plan.
+
+**End-of-session checklist (for multi-session plans):**
+
+1. Run `npm test && npm run lint && npm run build` — confirm clean.
+2. For phases that add runtime surface (command registration, event handlers, UI): also `npm run install:vault && obsidian plugin:reload id=<plugin-id> && obsidian dev:errors`.
+3. Update the session ledger in the plan: phase status, last commit SHA, current test count, handoff filename.
+4. Write a handoff under `project/handoffs/YYYY-MM-DD-NNN.md`. Treat the handoff as a **context bridge**, not a knowledge store — it carries session-specific outcome (what was done, what's in-progress, files touched) and points at durable locations for everything else.
+5. Update `project/state.md` if a state-worthy decision was made. **Critical details and persistent state must not be buried in handoffs.** If something has lasting relevance beyond the immediate next session, it belongs in `state.md` (project-wide) or the plan itself (plan-scoped) — not only in the handoff.
+6. Include a self-contained Opening Prompt at the end of the handoff.
+
+**Start-of-session checklist (for multi-session plans):**
+
+1. Read `project/state.md` (always first).
+2. Read the plan doc's session ledger and load-bearing constraints (top of the plan). Load the specific phase to be worked in full; skim later phases.
+3. Read the latest handoff named in `state.md`.
+4. Confirm working tree is clean (`git status`).
+5. Confirm test baseline (`npm test` matches the last handoff's recorded count).
+6. Invoke the execution skill (`superpowers:executing-plans` or `superpowers:subagent-driven-development`) for the target phase.
+
 ## Changelog
 
 - **`CHANGELOG.md`** at repo root — Keep a Changelog format, semver headings
