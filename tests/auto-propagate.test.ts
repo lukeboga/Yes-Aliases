@@ -98,3 +98,50 @@ describe("AutoPropagationManager lifecycle", () => {
 		});
 	});
 });
+
+describe("AutoPropagationManager vault events", () => {
+	it("onCreate seeds recentlyCreated with a 30-min expiry", () => {
+		const { plugin } = makePlugin(makeSettings());
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("new.md");
+		(mgr as any).onCreate(file);
+		expect(mgr.debugSize().recentlyCreated).toBe(1);
+	});
+
+	it("onCreate ignores non-markdown files", () => {
+		const { plugin } = makePlugin(makeSettings());
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("image.png", "png");
+		(mgr as any).onCreate(file);
+		expect(mgr.debugSize().recentlyCreated).toBe(0);
+	});
+
+	it("onDelete removes entries from all maps", () => {
+		const { plugin } = makePlugin(makeSettings());
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+		(mgr as any).onCreate(file);
+		mgr.recordWrite("a.md");
+		(mgr as any).onDelete(file);
+		const size = mgr.debugSize();
+		expect(size.recentlyCreated).toBe(0);
+		expect(size.inFlightWrites).toBe(0);
+	});
+
+	it("onRename re-keys all maps from old path to new path", () => {
+		const { plugin } = makePlugin(makeSettings());
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		mgr.recordWrite("old.md");
+		const renamed = makeTFile("new.md");
+		(mgr as any).onRename(renamed, "old.md");
+		const size = mgr.debugSize();
+		expect(size.inFlightWrites).toBe(1);
+		// recordWrite on the new path should not duplicate.
+		mgr.recordWrite("new.md");
+		expect(mgr.debugSize().inFlightWrites).toBe(1);
+	});
+});

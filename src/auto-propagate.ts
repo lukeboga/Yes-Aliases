@@ -6,6 +6,7 @@ import {
 } from "obsidian";
 import type { YesAliasesSettings } from "./settings";
 
+const RECENTLY_CREATED_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const EXPIRY_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
 
 /**
@@ -108,16 +109,55 @@ export class AutoPropagationManager {
 
 	// ─── Handlers (stubs; filled out in subsequent tasks) ───
 
-	private onCreate(_file: TAbstractFile): void {
-		// Task 6.2
+	private onCreate(file: TAbstractFile): void {
+		if (!isMarkdownFile(file)) return;
+		this.recentlyCreated.set(
+			file.path,
+			Date.now() + RECENTLY_CREATED_TTL_MS,
+		);
 	}
 
-	private onDelete(_file: TAbstractFile): void {
-		// Task 6.2
+	private onDelete(file: TAbstractFile): void {
+		const path = file.path;
+		this.aliasSnapshot.delete(path);
+		this.recentlyCreated.delete(path);
+		this.inFlightWrites.delete(path);
+		const timer = this.debounceTimers.get(path);
+		if (timer) {
+			clearTimeout(timer);
+			this.debounceTimers.delete(path);
+		}
 	}
 
-	private onRename(_file: TAbstractFile, _oldPath: string): void {
-		// Task 6.2
+	private onRename(file: TAbstractFile, oldPath: string): void {
+		const newPath = file.path;
+		if (oldPath === newPath) return;
+
+		const snapshot = this.aliasSnapshot.get(oldPath);
+		if (snapshot !== undefined) {
+			this.aliasSnapshot.delete(oldPath);
+			this.aliasSnapshot.set(newPath, snapshot);
+		}
+
+		const recent = this.recentlyCreated.get(oldPath);
+		if (recent !== undefined) {
+			this.recentlyCreated.delete(oldPath);
+			this.recentlyCreated.set(newPath, recent);
+		}
+
+		const inflight = this.inFlightWrites.get(oldPath);
+		if (inflight !== undefined) {
+			this.inFlightWrites.delete(oldPath);
+			this.inFlightWrites.set(newPath, inflight);
+		}
+
+		const timer = this.debounceTimers.get(oldPath);
+		if (timer) {
+			clearTimeout(timer);
+			this.debounceTimers.delete(oldPath);
+			// Do not reschedule — the next changed event for newPath
+			// starts a fresh debounce.
+		}
 	}
 
 	private onChanged(_file: TFile): void {
