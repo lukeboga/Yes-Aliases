@@ -108,3 +108,54 @@ function extractDisplayText(original: string): string | null {
 	if (pipeIdx === -1) return null;
 	return original.slice(pipeIdx + 1, -2);
 }
+
+export type CompressOutcome =
+	| { kind: "noop" }
+	| { kind: "proceed"; keepCount: number }
+	| { kind: "refuse"; result: CompressOrphanResult }
+	| { kind: "warn"; result: CompressOrphanResult; keepCount: number };
+
+/**
+ * Decide what compress should do without side effects.
+ * The caller maps the outcome to UI: proceed → apply, noop → silent,
+ * refuse → notice, warn → modal.
+ */
+export function planCompressOutcome(
+	app: App,
+	target: TFile,
+	keepCount: number,
+	settings: YesAliasesSettings,
+): CompressOutcome {
+	const aliases = getAllAliases(app, target);
+	if (aliases.length <= keepCount) return { kind: "noop" };
+
+	const result = detectCompressOrphans(app, target, keepCount, settings);
+	if (result.orphans.length === 0) return { kind: "proceed", keepCount };
+
+	if (settings.compressWarnInsteadOfBlock) {
+		return { kind: "warn", result, keepCount };
+	}
+	return { kind: "refuse", result };
+}
+
+/**
+ * Apply the compress: trim aliases array to the first keepCount entries
+ * using fileManager.processFrontMatter (atomic frontmatter rewrite).
+ * Returns the number of aliases that were removed.
+ */
+export async function applyCompress(
+	app: App,
+	target: TFile,
+	keepCount: number,
+): Promise<number> {
+	let removed = 0;
+	await app.fileManager.processFrontMatter(target, (frontmatter: Record<string, unknown>) => {
+		const raw = frontmatter.aliases;
+		if (!Array.isArray(raw)) return;
+		const before = raw.length;
+		const trimmed = raw.slice(0, keepCount);
+		frontmatter.aliases = trimmed;
+		removed = before - trimmed.length;
+	});
+	return removed;
+}

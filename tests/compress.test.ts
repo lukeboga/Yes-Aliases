@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { detectCompressOrphans } from "../src/compress";
+import { detectCompressOrphans, planCompressOutcome } from "../src/compress";
 import type { YesAliasesSettings } from "../src/settings";
 import {
 	parseFrontMatterAliases,
@@ -122,5 +122,102 @@ describe("detectCompressOrphans", () => {
 
 		const result = detectCompressOrphans(app, target, 1, makeSettings());
 		expect(result.orphans).toHaveLength(0);
+	});
+});
+
+describe("planCompressOutcome", () => {
+	it("returns no-op when aliases already at or below keepCount", () => {
+		const target = makeTFile("x.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: { aliases: ["Only"] } })),
+				resolvedLinks: {},
+				getFirstLinkpathDest: vi.fn(),
+			},
+			vault: { getAbstractFileByPath: vi.fn() },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Only"]);
+		const outcome = planCompressOutcome(app, target, 1, makeSettings());
+		expect(outcome.kind).toBe("noop");
+	});
+
+	it("returns refuse when orphans exist and warn mode is off", () => {
+		const target = makeTFile("jane.md");
+		const source = makeTFile("a.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn((f: any) => {
+					if (f.path === target.path)
+						return { frontmatter: { aliases: ["Jane Smith", "Jane"] } };
+					if (f.path === source.path)
+						return {
+							links: [
+								{
+									original: "[[jane|Jane]]",
+									position: { start: { offset: 0 }, end: { offset: 13 } },
+								},
+							],
+							sections: [],
+						};
+					return null;
+				}),
+				getFirstLinkpathDest: vi.fn(() => target),
+				resolvedLinks: { "a.md": { "jane.md": 1 } },
+			},
+			vault: { getAbstractFileByPath: vi.fn(() => source) },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith", "Jane"]);
+		const outcome = planCompressOutcome(app, target, 1, makeSettings());
+		expect(outcome.kind).toBe("refuse");
+	});
+
+	it("returns warn when orphans exist and warn mode is on", () => {
+		const target = makeTFile("jane.md");
+		const source = makeTFile("a.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn((f: any) => {
+					if (f.path === target.path)
+						return { frontmatter: { aliases: ["Jane Smith", "Jane"] } };
+					if (f.path === source.path)
+						return {
+							links: [
+								{
+									original: "[[jane|Jane]]",
+									position: { start: { offset: 0 }, end: { offset: 13 } },
+								},
+							],
+							sections: [],
+						};
+					return null;
+				}),
+				getFirstLinkpathDest: vi.fn(() => target),
+				resolvedLinks: { "a.md": { "jane.md": 1 } },
+			},
+			vault: { getAbstractFileByPath: vi.fn(() => source) },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith", "Jane"]);
+		const outcome = planCompressOutcome(
+			app,
+			target,
+			1,
+			makeSettings({ compressWarnInsteadOfBlock: true }),
+		);
+		expect(outcome.kind).toBe("warn");
+	});
+
+	it("returns proceed when no orphans exist", () => {
+		const target = makeTFile("jane.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: { aliases: ["Jane", "Historical"] } })),
+				resolvedLinks: {},
+				getFirstLinkpathDest: vi.fn(),
+			},
+			vault: { getAbstractFileByPath: vi.fn() },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane", "Historical"]);
+		const outcome = planCompressOutcome(app, target, 1, makeSettings());
+		expect(outcome.kind).toBe("proceed");
 	});
 });
