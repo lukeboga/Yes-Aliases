@@ -205,3 +205,69 @@ describe("onChanged — lazy seed", () => {
 		expect(plugin.propagate).not.toHaveBeenCalled();
 	});
 });
+
+describe("onChanged — subsequent observations", () => {
+	it("propagates on alias change when autoPropagateAllAliasChanges is enabled", () => {
+		const { plugin } = makePlugin(
+			makeSettings({ autoPropagateAllAliasChanges: true }),
+		);
+		let currentAliases = ["Jane"];
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases: currentAliases },
+		}));
+		(parseFrontMatterAliases as any).mockImplementation(() => currentAliases);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+
+		// Seed observation (no propagate).
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		// Alias changes — second observation triggers propagate.
+		currentAliases = ["Jane Smith"];
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not propagate on second observation when arrays are equal", () => {
+		const { plugin } = makePlugin(
+			makeSettings({ autoPropagateAllAliasChanges: true }),
+		);
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases: ["Jane"] },
+		}));
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane"]);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+		expect(plugin.propagate).not.toHaveBeenCalled();
+	});
+
+	it("does not propagate in general branch when autoPropagateAllAliasChanges is off", () => {
+		const { plugin } = makePlugin(makeSettings()); // default: all = false
+		let aliases = ["Jane"];
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases },
+		}));
+		(parseFrontMatterAliases as any).mockImplementation(() => aliases);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+		aliases = ["Jane Smith"];
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+		expect(plugin.propagate).not.toHaveBeenCalled();
+	});
+});
