@@ -212,6 +212,59 @@ export default class YesAliasesPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "remove-link-alias-under-cursor",
+			name: "Remove link alias under cursor",
+			editorCallback: (editor, view) => {
+				const file = view.file;
+				if (!file) return;
+				const result = removeLinkUnderCursor(
+					this.app,
+					editor,
+					file,
+					this.settings,
+				);
+				new Notice(result.message);
+			},
+		});
+
+		this.addCommand({
+			id: "remove-link-aliases-in-file",
+			name: "Remove link aliases in current file",
+			editorCallback: (editor, view) => {
+				const file = view.file;
+				if (!file) return;
+				const stats = removeLinksInFile(
+					this.app,
+					editor,
+					file,
+					this.settings,
+				);
+				if (stats.updated === 0 && stats.skipped === 0) {
+					new Notice("No link aliases to remove");
+				} else {
+					new Notice(
+						`${stats.updated} link alias${stats.updated === 1 ? "" : "es"} removed, ${stats.skipped} skipped`,
+					);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: "remove-link-aliases-in-vault",
+			name: "Remove link aliases across vault",
+			callback: async () => {
+				const stats = await removeLinksInVault(this.app, this.settings);
+				if (stats.updated === 0) {
+					new Notice("No link aliases to remove in vault");
+				} else {
+					new Notice(
+						`${stats.filesProcessed} files — ${stats.updated} link aliases removed, ${stats.skipped} skipped`,
+					);
+				}
+			},
+		});
+
+		this.addCommand({
 			id: "compress-aliases-file",
 			name: "Compress aliases in current file",
 			callback: async () => {
