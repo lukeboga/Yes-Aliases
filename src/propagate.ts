@@ -3,6 +3,8 @@ import {
 	type CachedMetadata,
 	type Editor,
 	TFile,
+	type TFolder,
+	Vault,
 } from "obsidian";
 import {
 	decidePropagate,
@@ -285,3 +287,32 @@ export async function propagateFile(
 	return stats;
 }
 
+/** Propagate aliases for every markdown file in a folder (recursive). */
+export async function propagateFolder(
+	app: App,
+	folder: TFolder,
+	settings: YesAliasesSettings,
+	options: PropagateOptions,
+): Promise<PropagateStats> {
+	const targets: TFile[] = [];
+	Vault.recurseChildren(folder, (child) => {
+		if (isMarkdownFile(child)) targets.push(child);
+	});
+
+	const aggregate: PropagateStats = {
+		targetsProcessed: 0,
+		filesTouched: 0,
+		linksRewritten: 0,
+		skipped: 0,
+	};
+
+	for (const target of targets) {
+		const s = await propagateFile(app, target, settings, options);
+		aggregate.targetsProcessed += s.targetsProcessed;
+		aggregate.filesTouched += s.filesTouched;
+		aggregate.linksRewritten += s.linksRewritten;
+		aggregate.skipped += s.skipped;
+	}
+
+	return aggregate;
+}

@@ -1,10 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { propagateFile, type PropagateStats } from "../src/propagate";
+import {
+	propagateFile,
+	propagateFolder,
+	type PropagateStats,
+} from "../src/propagate";
 import type { YesAliasesSettings } from "../src/settings";
 import {
 	parseFrontMatterAliases,
 	parseFrontMatterStringArray,
 	TFile,
+	TFolder,
+	Vault,
 } from "obsidian";
 
 /** Build a TFile-instance test fixture so `instanceof TFile` checks pass under the mock. */
@@ -143,5 +149,71 @@ describe("propagateFile", () => {
 		);
 		expect(stats.linksRewritten).toBe(0);
 		expect(app.vault.process).not.toHaveBeenCalled();
+	});
+});
+
+describe("propagateFolder", () => {
+	it("propagates each markdown file in the folder as a target", async () => {
+		const folder = new TFolder();
+		folder.path = "people";
+		folder.name = "people";
+		const jane = makeTFile("people/jane.md");
+		const john = makeTFile("people/john.md");
+
+		(Vault.recurseChildren as any).mockImplementation(
+			(_f: any, cb: (child: any) => void) => {
+				cb(jane);
+				cb(john);
+			},
+		);
+
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: {} })),
+				getFirstLinkpathDest: vi.fn(),
+				resolvedLinks: {},
+			},
+			vault: { getAbstractFileByPath: vi.fn(), process: vi.fn() },
+			workspace: { iterateAllLeaves: vi.fn(() => {}) },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(null);
+		(parseFrontMatterStringArray as any).mockReturnValue(null);
+
+		const stats = await propagateFolder(app, folder, makeSettings(), {
+			source: "manual",
+		});
+		expect(stats.targetsProcessed).toBe(2);
+		expect(stats.linksRewritten).toBe(0);
+	});
+
+	it("skips non-markdown children", async () => {
+		const folder = new TFolder();
+		folder.path = "mixed";
+		const note = makeTFile("mixed/a.md");
+		const image = makeTFile("mixed/img.png", "png");
+
+		(Vault.recurseChildren as any).mockImplementation(
+			(_f: any, cb: (child: any) => void) => {
+				cb(note);
+				cb(image);
+			},
+		);
+
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: {} })),
+				getFirstLinkpathDest: vi.fn(),
+				resolvedLinks: {},
+			},
+			vault: { getAbstractFileByPath: vi.fn(), process: vi.fn() },
+			workspace: { iterateAllLeaves: vi.fn(() => {}) },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(null);
+		(parseFrontMatterStringArray as any).mockReturnValue(null);
+
+		const stats = await propagateFolder(app, folder, makeSettings(), {
+			source: "manual",
+		});
+		expect(stats.targetsProcessed).toBe(1);
 	});
 });
