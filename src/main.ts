@@ -16,9 +16,25 @@ import {
 	updateLinksInFolder,
 	updateLinksInVault,
 } from "./vault-writer";
+import {
+	propagateFile,
+	propagateFolder,
+	propagateVault,
+	type PropagateStats,
+} from "./propagate";
+import {
+	removeLinkUnderCursor,
+	removeLinksInFile,
+	removeLinksInFolder,
+	removeLinksInVault,
+} from "./remove-driver";
+import { applyCompress, planCompressOutcome } from "./compress";
+import { CompressConfirmModal } from "./compress-modal";
+import { AutoPropagationManager } from "./auto-propagate";
 
 export default class YesAliasesPlugin extends Plugin {
 	settings!: YesAliasesSettings;
+	private autoPropagate: AutoPropagationManager | null = null;
 	/**
 	 * Coordinates of the most recent contextmenu event. Used by the
 	 * editor-menu handler to find the actual clicked position via
@@ -52,6 +68,40 @@ export default class YesAliasesPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	/** Auto-propagation entry point called by AutoPropagationManager. */
+	async propagate(file: TFile, source: "auto" | "manual"): Promise<void> {
+		const stats = await propagateFile(this.app, file, this.settings, {
+			source,
+			onBeforeWrite: (path) => this.autoPropagate?.recordWrite(path),
+		});
+		this.reportPropagateStats(
+			stats,
+			source,
+			`Propagated aliases from ${file.basename}`,
+		);
+	}
+
+	private reportPropagateStats(
+		stats: PropagateStats,
+		source: "auto" | "manual",
+		prefix: string,
+	): void {
+		// Per §15 resolution 5: threshold applies to auto only.
+		if (
+			source === "auto" &&
+			stats.filesTouched <= this.settings.autoPropagateNoticeThreshold
+		) {
+			return;
+		}
+		if (stats.linksRewritten === 0) {
+			if (source === "manual") new Notice(`${prefix} — no links updated`);
+			return;
+		}
+		new Notice(
+			`${prefix}: ${stats.linksRewritten} link${stats.linksRewritten === 1 ? "" : "s"} in ${stats.filesTouched} file${stats.filesTouched === 1 ? "" : "s"}`,
+		);
 	}
 
 	private registerCommands(): void {
@@ -108,6 +158,35 @@ export default class YesAliasesPlugin extends Plugin {
 						`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
 					);
 				}
+			},
+		});
+
+		this.addCommand({
+			id: "propagate-aliases-file",
+			name: "Propagate aliases for current file",
+			callback: async () => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file) {
+					new Notice("No active file");
+					return;
+				}
+				await this.propagate(file, "manual");
+			},
+		});
+
+		this.addCommand({
+			id: "propagate-aliases-vault",
+			name: "Propagate aliases across vault",
+			callback: async () => {
+				const stats = await propagateVault(this.app, this.settings, {
+					source: "manual",
+					onBeforeWrite: (p) => this.autoPropagate?.recordWrite(p),
+				});
+				this.reportPropagateStats(
+					stats,
+					"manual",
+					"Propagated aliases across vault",
+				);
 			},
 		});
 
