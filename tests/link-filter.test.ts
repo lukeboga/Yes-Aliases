@@ -1,14 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
+	hasBlockReference,
+	hasHeadingReference,
+	isAnchoredLink,
 	isInsideSection,
 	isInsideInlineCode,
 	isEmbed,
+	isLinkExcluded,
 	getYamlSectionRange,
 	findFrontmatterLinkOffset,
 	getLinkpathFromFrontmatterLink,
 	toLinkInput,
 	type OffsetRange,
 } from "../src/link-filter";
+import type { YesAliasesSettings } from "../src/settings";
+
+function makeSettings(partial: Partial<YesAliasesSettings> = {}): YesAliasesSettings {
+	return {
+		overwriteExisting: false,
+		updateFrontmatterLinks: true,
+		ignoredFolders: [],
+		preserveHeadingAndBlockAnchors: false,
+		caseInsensitiveAliasMatch: false,
+		autoPropagateNewNoteAliases: true,
+		autoPropagateAllAliasChanges: false,
+		autoPropagateNoticeThreshold: 5,
+		aliasesKeepCount: 1,
+		compressWarnInsteadOfBlock: false,
+		removeIgnoresPropagationSafety: false,
+		...partial,
+	};
+}
 
 describe("isInsideSection", () => {
 	const sections: OffsetRange[] = [
@@ -204,5 +226,137 @@ describe("getLinkpathFromFrontmatterLink", () => {
 
 	it("strips block reference subpath", () => {
 		expect(getLinkpathFromFrontmatterLink({ link: "notes/my-note#^block-id" })).toBe("notes/my-note");
+	});
+});
+
+describe("hasHeadingReference", () => {
+	it("detects a heading reference in the link path", () => {
+		expect(hasHeadingReference("[[Note#Heading]]")).toBe(true);
+	});
+
+	it("detects a heading with display text", () => {
+		expect(hasHeadingReference("[[Note#Heading|Display]]")).toBe(true);
+	});
+
+	it("returns false for plain wikilinks", () => {
+		expect(hasHeadingReference("[[Note]]")).toBe(false);
+	});
+
+	it("returns false for block refs (the ^ form)", () => {
+		expect(hasHeadingReference("[[Note#^abc]]")).toBe(false);
+	});
+
+	it("returns false for a # inside display text only", () => {
+		expect(hasHeadingReference("[[Note|text with # symbol]]")).toBe(false);
+	});
+});
+
+describe("hasBlockReference", () => {
+	it("detects modern #^ block ref", () => {
+		expect(hasBlockReference("[[Note#^abc]]")).toBe(true);
+	});
+
+	it("detects legacy ^ block ref (no hash)", () => {
+		expect(hasBlockReference("[[Note^abc]]")).toBe(true);
+	});
+
+	it("detects block ref with display text", () => {
+		expect(hasBlockReference("[[Note#^abc|Display]]")).toBe(true);
+	});
+
+	it("returns false for heading refs", () => {
+		expect(hasBlockReference("[[Note#Heading]]")).toBe(false);
+	});
+
+	it("returns false for plain wikilinks", () => {
+		expect(hasBlockReference("[[Note]]")).toBe(false);
+	});
+
+	it("returns false for ^ in display text only", () => {
+		expect(hasBlockReference("[[Note|text^stuff]]")).toBe(false);
+	});
+});
+
+describe("isAnchoredLink", () => {
+	it("returns true for heading links", () => {
+		expect(isAnchoredLink("[[Note#Heading]]")).toBe(true);
+	});
+
+	it("returns true for block refs", () => {
+		expect(isAnchoredLink("[[Note#^abc]]")).toBe(true);
+	});
+
+	it("returns true for heading embeds", () => {
+		expect(isAnchoredLink("![[Note#Heading]]")).toBe(true);
+	});
+
+	it("returns false for plain wikilinks", () => {
+		expect(isAnchoredLink("[[Note]]")).toBe(false);
+	});
+
+	it("returns false for plain embeds", () => {
+		expect(isAnchoredLink("![[Note]]")).toBe(false);
+	});
+});
+
+describe("isLinkExcluded with settings", () => {
+	it("includes embeds by default (inclusive boundary)", () => {
+		const content = "text ![[Note]] more";
+		const link = {
+			original: "![[Note]]",
+			position: { start: { offset: 5 }, end: { offset: 14 } },
+		} as any;
+		expect(isLinkExcluded(link, content, [], makeSettings())).toBe(false);
+	});
+
+	it("includes heading links by default", () => {
+		const content = "text [[Note#Heading]] more";
+		const link = {
+			original: "[[Note#Heading]]",
+			position: { start: { offset: 5 }, end: { offset: 21 } },
+		} as any;
+		expect(isLinkExcluded(link, content, [], makeSettings())).toBe(false);
+	});
+
+	it("excludes heading links when preserveHeadingAndBlockAnchors is true", () => {
+		const content = "text [[Note#Heading]] more";
+		const link = {
+			original: "[[Note#Heading]]",
+			position: { start: { offset: 5 }, end: { offset: 21 } },
+		} as any;
+		expect(
+			isLinkExcluded(link, content, [], makeSettings({ preserveHeadingAndBlockAnchors: true })),
+		).toBe(true);
+	});
+
+	it("excludes block refs when preserveHeadingAndBlockAnchors is true", () => {
+		const content = "text [[Note#^abc]] more";
+		const link = {
+			original: "[[Note#^abc]]",
+			position: { start: { offset: 5 }, end: { offset: 18 } },
+		} as any;
+		expect(
+			isLinkExcluded(link, content, [], makeSettings({ preserveHeadingAndBlockAnchors: true })),
+		).toBe(true);
+	});
+
+	it("excludes heading embeds when preserveHeadingAndBlockAnchors is true", () => {
+		const content = "text ![[Note#Heading]] more";
+		const link = {
+			original: "![[Note#Heading]]",
+			position: { start: { offset: 5 }, end: { offset: 22 } },
+		} as any;
+		expect(
+			isLinkExcluded(link, content, [], makeSettings({ preserveHeadingAndBlockAnchors: true })),
+		).toBe(true);
+	});
+
+	it("still excludes links inside sections and inline code", () => {
+		const content = "text `[[Note]]` more";
+		const link = {
+			original: "[[Note]]",
+			position: { start: { offset: 6 }, end: { offset: 14 } },
+		} as any;
+		expect(isLinkExcluded(link, content, [], makeSettings())).toBe(true);
 	});
 });

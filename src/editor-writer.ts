@@ -66,7 +66,7 @@ export function updateLinkUnderCursor(
 
 		if (link) {
 			const excludedRanges = buildExcludedRanges(cache.sections);
-			if (!isLinkExcluded(link, content, excludedRanges)) {
+			if (!isLinkExcluded(link, content, excludedRanges, settings)) {
 				const linkpath = getLinkpathForResolution(link);
 				const { alias } = resolveAlias(app, linkpath, file.path);
 				const input = toLinkInput(link, alias, settings);
@@ -171,7 +171,7 @@ export function updateLinksInFile(
 	if (hasBodyLinks) {
 		const excludedRanges = buildExcludedRanges(cache.sections);
 		for (const link of cache.links!) {
-			if (isLinkExcluded(link, content, excludedRanges)) {
+			if (isLinkExcluded(link, content, excludedRanges, settings)) {
 				continue;
 			}
 

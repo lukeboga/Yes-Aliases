@@ -175,21 +175,69 @@ export function findFrontmatterLinkOffset(
 	return { start: index, end: index + original.length };
 }
 
+/** Extract the link path portion (between "[[" or "![[" and "]]"), stripping display text. */
+function getLinkPathPortion(original: string): string {
+	const openIdx = original.indexOf("[[");
+	const closeIdx = original.lastIndexOf("]]");
+	if (openIdx === -1 || closeIdx === -1 || closeIdx <= openIdx) return "";
+	const inner = original.slice(openIdx + 2, closeIdx);
+	const pipeIdx = inner.indexOf("|");
+	return pipeIdx === -1 ? inner : inner.slice(0, pipeIdx);
+}
+
 /**
- * Determine whether a link should be skipped based on its position
- * (inside excluded sections, inline code, or embed syntax).
+ * Does the link reference a heading (e.g. [[Note#Heading]])?
+ * True only for `#` followed by a non-caret character. `#^` is a block ref.
+ */
+export function hasHeadingReference(original: string): boolean {
+	const path = getLinkPathPortion(original);
+	const hashIdx = path.indexOf("#");
+	if (hashIdx === -1) return false;
+	return path[hashIdx + 1] !== "^";
+}
+
+/**
+ * Does the link reference a block (e.g. [[Note#^abc]] or [[Note^abc]])?
+ * Catches both the modern `#^` form and the legacy `^` form. Per design
+ * §2.6, detection is "`^` in the link path" — any `^` after the filename.
+ */
+export function hasBlockReference(original: string): boolean {
+	const path = getLinkPathPortion(original);
+	// Skip the first char to avoid treating a filename starting with ^ as a block.
+	return path.indexOf("^", 1) !== -1;
+}
+
+/** Is this link anchored (either heading or block ref)? */
+export function isAnchoredLink(original: string): boolean {
+	return hasHeadingReference(original) || hasBlockReference(original);
+}
+
+/**
+ * Determine whether a link should be skipped based on its position and
+ * the inclusive boundary rules from the settings.
+ *
+ * Default: exclude only if inside an excluded section (yaml/code) or
+ * inline code span. Embeds and anchored links are INCLUDED by default.
+ *
+ * When `preserveHeadingAndBlockAnchors` is true, anchored links (heading
+ * links, block refs, heading embeds, block embeds) are additionally
+ * excluded.
  */
 export function isLinkExcluded(
 	link: LinkCache,
 	content: string,
 	excludedRanges: OffsetRange[],
+	settings: YesAliasesSettings,
 ): boolean {
 	const startOffset = link.position.start.offset;
 	const endOffset = link.position.end.offset;
 
 	if (isInsideSection(startOffset, endOffset, excludedRanges)) return true;
 	if (isInsideInlineCode(content, startOffset, endOffset)) return true;
-	if (isEmbed(content, startOffset)) return true;
+
+	if (settings.preserveHeadingAndBlockAnchors && isAnchoredLink(link.original)) {
+		return true;
+	}
 
 	return false;
 }
