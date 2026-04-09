@@ -74,7 +74,9 @@ Short-lived context bridges between consecutive sessions. One file per handoff.
 - Anything the next session could waste time on without this context
 
 ## Opening Prompt
-> [paste-ready prompt for the next session — see rules below]
+~~~
+[paste-ready prompt for the next session — see rules below]
+~~~
 ```
 
 **Opening Prompt rules:**
