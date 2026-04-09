@@ -365,3 +365,183 @@ This checklist covers every command, context menu, setting, and edge case in the
 1. **Setup:** Add `_meta` to **Ignored folders**. Create `_meta/templates/T.md` with `[[Alpha]]`.
 2. **Action:** Run **"Update all links in vault"**.
 3. **Expected:** `_meta/templates/T.md` is skipped. The prefix `_meta` matches `_meta/templates`.
+
+---
+
+## 9. Alias lifecycle — propagate, compress, remove (v0.1.0)
+
+These procedures cover the new command families added in 0004. Each is copy-pasteable for regression testing.
+
+### 9.0 Setup — extra fixtures
+
+1. **Setup:** Create `people/jane.md` with the following frontmatter:
+   ```yaml
+   ---
+   aliases:
+     - Jane Smith
+     - Jane
+   ---
+   ```
+2. **Setup:** Create `Notes/Backlinker.md` with:
+   ```markdown
+   See [[people/jane|Jane]] today.
+   Also [[people/jane|Jane Smith]] tomorrow.
+   And [[people/jane|click here for Jane's profile]] for the prose case.
+   ```
+3. **Expected:** `people/jane.md` and `Notes/Backlinker.md` exist; the metadata cache reports three resolved links from Backlinker → people/jane.
+
+### 9.1 Propagate — file scope
+
+1. **Setup:** Section 9.0 fixtures present. `people/jane.md` has `aliases: [Jane Smith, Jane]`.
+2. **Action:** Open `people/jane.md`. Run **"Propagate aliases for current file"** from the command palette.
+3. **Expected:** In `Notes/Backlinker.md`:
+   - `[[people/jane|Jane]]` → `[[people/jane|Jane Smith]]` (matched historical alias `Jane`, rewritten to canonical `aliases[0]`)
+   - `[[people/jane|Jane Smith]]` unchanged (already canonical)
+   - `[[people/jane|click here for Jane's profile]]` unchanged (prose, no alias match)
+   - Notice reports 1 file, 1 link updated.
+
+### 9.2 Propagate — folder scope (file-menu only)
+
+1. **Setup:** Several files in `people/` each with `aliases:` and at least one backlink elsewhere whose display text matches a historical alias.
+2. **Action:** Right-click the `people` folder in the file explorer.
+3. **Expected:** **"Propagate aliases for files in folder"** appears in the menu.
+4. **Action:** Click it.
+5. **Expected:** Each file in `people/` is treated as a propagation target; backlinks to those targets are rewritten where the safe-rewrite rule allows. Notice reports a consolidated count.
+
+### 9.3 Propagate — vault scope
+
+1. **Setup:** Several aliased target files across the vault, each with at least one backlink. Add an `_archive` folder to **Ignored folders** containing one aliased file with backlinks.
+2. **Action:** Run **"Propagate aliases across vault"** from the command palette.
+3. **Expected:**
+   - All non-ignored backlinks are processed.
+   - Files in `_archive` are skipped both as propagation targets and as source files.
+   - Notice reports the file/link counts.
+4. **Cleanup:** Remove `_archive` from ignored folders.
+
+### 9.4 Auto-propagate — new-note branch
+
+1. **Setup:** Confirm **"Auto-update links when a new note gets its first alias"** is on (default).
+2. **Action:** In an existing note, type `[[new-test-file]]`. Click the link to create `new-test-file.md`.
+3. **Action:** Add `aliases: [Test Alias]` to its frontmatter and save.
+4. **Expected:** Within ~500 ms (debounce), the original note's link updates to show `[[new-test-file|Test Alias]]`. No notice unless threshold is set to 0.
+5. **Cleanup:** Delete `new-test-file.md` and the linking note.
+
+### 9.5 Auto-propagate — all-alias-changes branch
+
+1. **Setup:** Enable **"Auto-update links whenever any note's alias changes"**. Have an existing aliased note (e.g. `people/jane.md`) with several backlinks.
+2. **Action:** Edit `people/jane.md`'s `aliases[0]` from `Jane Smith` to `Jane S.`.
+3. **Expected:** Within ~500 ms, every backlink to `people/jane` whose display text matched `Jane Smith` is rewritten to `Jane S.`. If ≥ 6 files were affected (or threshold set lower), a consolidated notice appears.
+4. **Cleanup:** Disable the all-changes setting; revert the alias.
+
+### 9.6 Compress — no orphans
+
+1. **Setup:** Open a file with `aliases: [Main, Historical]` where no backlink in the vault uses "Historical" as display text.
+2. **Action:** Run **"Compress aliases in current file"** from the command palette.
+3. **Expected:** Frontmatter becomes `aliases: [Main]`. Success notice.
+
+### 9.7 Compress — orphans, strict refuse (default)
+
+1. **Setup:** Same target file as 9.6 with `aliases: [Main, Historical]`. Create a backlink elsewhere using `[[target|Historical]]`. Confirm **"Warn instead of blocking"** is off.
+2. **Action:** Run **"Compress aliases in current file"** on the target.
+3. **Expected:** Frontmatter unchanged. Notice says `Cannot compress aliases — N link(s) across M file(s) still show alias entries that would be removed. Run "Propagate aliases across vault" first, or enable "Warn instead of blocking" in settings.`
+
+### 9.8 Compress — orphans, warn modal
+
+1. **Setup:** Same as 9.7 but enable **"Warn instead of blocking"**.
+2. **Action:** Run **"Compress aliases in current file"**.
+3. **Expected:** Modal opens. Title: "Compress aliases — orphaned links detected". Body lists the stripped entries (up to 5; "…and N more" if longer) and the orphan/file counts. Two buttons: **Cancel** (default focus) and **Strip anyway**.
+4. **Action:** Press `Enter`.
+5. **Expected:** Modal closes (Cancel was focused). Frontmatter unchanged.
+6. **Action:** Run again, click **Strip anyway**.
+7. **Expected:** Modal closes. Frontmatter is now `aliases: [Main]`. Backlinks using `Historical` are now orphaned (no alias entry recognizes them).
+8. **Cleanup:** Disable **"Warn instead of blocking"**. Restore the historical alias if you want to re-test.
+
+### 9.9 Compress — to main alias (always trims to 1)
+
+1. **Setup:** A file with `aliases: [A, B, C, D]`. **"Main aliases to keep"** set to 3.
+2. **Action:** Run **"Compress aliases to main alias"**.
+3. **Expected:** Frontmatter becomes `aliases: [A]` regardless of the keep-count setting. Notice confirms.
+
+### 9.10 Remove — cursor scope
+
+1. **Setup:** Open a file containing `[[people/jane|Jane Smith]]`. Place cursor inside the link.
+2. **Action:** Run **"Remove link alias under cursor"** from the command palette.
+3. **Expected:** Link becomes `[[people/jane]]`. Notice confirms.
+
+### 9.11 Remove — file scope, safe mode (default)
+
+1. **Setup:** A file containing both `[[people/jane|Jane Smith]]` (alias-matching) and `[[people/jane|click here for Jane's profile]]` (prose). Confirm **"Remove also strips custom display text"** is off.
+2. **Action:** Run **"Remove link aliases in current file"**.
+3. **Expected:** `[[people/jane|Jane Smith]]` → `[[people/jane]]`. The prose link is unchanged. Notice reports 1 stripped, 1 preserved.
+
+### 9.12 Remove — file scope, aggressive mode
+
+1. **Setup:** Same fixture as 9.11. Enable **"Remove also strips custom display text"**.
+2. **Action:** Run **"Remove link aliases in current file"** again.
+3. **Expected:** `[[people/jane|click here for Jane's profile]]` → `[[people/jane]]`. Notice reports the strip.
+4. **Cleanup:** Disable the aggressive setting.
+
+### 9.13 Remove — folder scope (file-menu only)
+
+1. **Setup:** Several files in a folder, each with at least one alias-matching link.
+2. **Action:** Right-click the folder in the file explorer.
+3. **Expected:** **"Remove link aliases in folder"** appears.
+4. **Action:** Click it.
+5. **Expected:** All matching links across the folder (recursive) are stripped. Notice reports counts.
+
+### 9.14 Remove — vault scope
+
+1. **Setup:** Alias-matching links across multiple folders. `_archive` in **Ignored folders** containing alias-matching links that should be untouched.
+2. **Action:** Run **"Remove link aliases in vault"** from the command palette.
+3. **Expected:** All non-ignored alias-matching links are stripped. `_archive` files are unchanged. Notice reports a consolidated count.
+4. **Cleanup:** Remove `_archive` from ignored folders.
+
+### 9.15 Inclusive boundary — embeds and anchors
+
+1. **Setup:** `other.md` has `aliases: [Other Alias]` and a `## Heading` plus a `paragraph ^abc` block. Create a file with:
+   ```markdown
+   ![[other]]
+   ![[other#Heading]]
+   ![[other#^abc]]
+   ![[other|Caption]]
+   [[other#Heading]]
+   [[other#^abc]]
+   ```
+2. **Setup:** Confirm **"Preserve heading and block anchors"** is off (default).
+3. **Action:** Run **"Update all links in current file"** (existing pull-update).
+4. **Expected:**
+   - `![[other]]` → `![[other|Other Alias]]`
+   - `![[other#Heading]]` → `![[other#Heading|Other Alias]]`
+   - `![[other#^abc]]` → `![[other#^abc|Other Alias]]`
+   - `![[other|Caption]]` unchanged (custom caption preserved unless overwrite is on)
+   - `[[other#Heading]]` → `[[other#Heading|Other Alias]]`
+   - `[[other#^abc]]` → `[[other#^abc|Other Alias]]`
+5. **Action:** Enable **"Preserve heading and block anchors"** and re-run.
+6. **Expected:** Heading and block variants (both embed and wikilink) are now skipped. Plain embed `![[other]]` still participates.
+7. **Cleanup:** Disable **"Preserve heading and block anchors"**.
+
+### 9.16 Context menu — Remove link alias (body wikilink, source mode)
+
+1. **Setup:** Open `Notes/Backlinker.md` in source mode.
+2. **Action:** Right-click directly on `[[people/jane|Jane Smith]]`.
+3. **Expected:** Context menu contains **"Remove link alias"**.
+4. **Action:** Click it.
+5. **Expected:** Link becomes `[[people/jane]]`. Notice confirms.
+
+### 9.17 Context menu — Remove link alias (Live Preview body link)
+
+1. **Setup:** Same file in Live Preview mode.
+2. **Action:** Right-click on the rendered link.
+3. **Expected:** **"Remove link alias"** appears in the menu and removes the alias on click.
+
+### 9.18 Context menu — Remove link alias (source-mode YAML wikilink)
+
+1. **Setup:** A file with `related: "[[people/jane|Jane Smith]]"` in frontmatter, opened in source mode.
+2. **Action:** Right-click on the frontmatter `[[people/jane|Jane Smith]]`.
+3. **Expected:** Context menu contains **"Remove link alias"**. Clicking it strips the display text from the YAML wikilink.
+
+### 9.19 Context menu — Remove link alias (Properties UI, Live Preview)
+
+1. **Setup:** Same file in Live Preview. The frontmatter renders as the Properties panel.
+2. **Action:** Right-click the link in the Properties panel.
+3. **Expected:** **"Remove link alias"** appears. Clicking it strips display text from **all** frontmatter links to that target (documented limitation, mirrors the existing update behavior).
