@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { decideRewrite, extractLinkPath, type LinkInput } from "../src/pipeline";
+import {
+	decideRewrite,
+	extractLinkPath,
+	isCanonicalAlias,
+	isAliasMatch,
+	type LinkInput,
+} from "../src/pipeline";
 
 function makeInput(overrides: Partial<LinkInput> = {}): LinkInput {
 	return {
@@ -142,5 +148,61 @@ describe("extractLinkPath", () => {
 
 	it("handles folder paths", () => {
 		expect(extractLinkPath("[[folder/file]]")).toBe("folder/file");
+	});
+});
+
+describe("isCanonicalAlias", () => {
+	it("returns true when display text equals aliases[0]", () => {
+		expect(isCanonicalAlias("Jane Smith", ["Jane Smith", "Jane"], false)).toBe(true);
+	});
+
+	it("returns false when display text matches a historical alias", () => {
+		expect(isCanonicalAlias("Jane", ["Jane Smith", "Jane"], false)).toBe(false);
+	});
+
+	it("returns false when aliases is empty", () => {
+		expect(isCanonicalAlias("Anything", [], false)).toBe(false);
+	});
+
+	it("returns false when aliases[0] is empty string", () => {
+		expect(isCanonicalAlias("", ["", "Jane"], false)).toBe(false);
+	});
+
+	it("is case-sensitive by default", () => {
+		expect(isCanonicalAlias("jane smith", ["Jane Smith"], false)).toBe(false);
+	});
+
+	it("matches case-insensitively when flag is true", () => {
+		expect(isCanonicalAlias("jane smith", ["Jane Smith"], true)).toBe(true);
+	});
+});
+
+describe("isAliasMatch", () => {
+	it("returns true when display text equals the canonical alias", () => {
+		expect(isAliasMatch("Jane Smith", ["Jane Smith", "Jane"], false)).toBe(true);
+	});
+
+	it("returns true when display text equals a historical alias", () => {
+		expect(isAliasMatch("Jane", ["Jane Smith", "Jane"], false)).toBe(true);
+	});
+
+	it("returns false when display text does not match any alias entry", () => {
+		expect(isAliasMatch("click here", ["Jane Smith", "Jane"], false)).toBe(false);
+	});
+
+	it("returns false when aliases is empty", () => {
+		expect(isAliasMatch("Anything", [], false)).toBe(false);
+	});
+
+	it("skips empty string alias entries", () => {
+		expect(isAliasMatch("", ["Jane", ""], false)).toBe(false);
+	});
+
+	it("is case-sensitive by default", () => {
+		expect(isAliasMatch("jane", ["Jane Smith", "Jane"], false)).toBe(false);
+	});
+
+	it("matches case-insensitively when flag is true", () => {
+		expect(isAliasMatch("JANE", ["Jane Smith", "Jane"], true)).toBe(true);
 	});
 });

@@ -51,3 +51,49 @@ export function decideRewrite(input: LinkInput): RewriteDecision {
 		newText: `[[${linkPath}|${input.targetAlias}]]`,
 	};
 }
+
+/**
+ * Is this display text the current canonical alias?
+ *
+ * v0.1.0: strict equals aliases[0]. Empty canonical ("") never matches.
+ *
+ * Future privileged-set upgrade (v0.4.0+): test membership in
+ * aliases.slice(0, keepCount). The call sites and the companion
+ * isAliasMatch predicate must remain untouched — that is the
+ * load-bearing separation.
+ */
+export function isCanonicalAlias(
+	displayText: string,
+	aliases: string[],
+	caseInsensitive: boolean,
+): boolean {
+	const canonical = aliases[0];
+	if (canonical === undefined || canonical === "") return false;
+	if (caseInsensitive) {
+		return displayText.toLowerCase() === canonical.toLowerCase();
+	}
+	return displayText === canonical;
+}
+
+/**
+ * Is this display text a known alias (canonical OR historical)?
+ *
+ * Tests membership in the full aliases array. Used by the safe-rewrite
+ * rule that both propagate and remove consume. Empty strings never match.
+ *
+ * This predicate is deliberately distinct from isCanonicalAlias so the
+ * privileged-set upgrade can change canonical logic without touching
+ * the match logic.
+ */
+export function isAliasMatch(
+	displayText: string,
+	aliases: string[],
+	caseInsensitive: boolean,
+): boolean {
+	if (displayText === "") return false;
+	if (caseInsensitive) {
+		const target = displayText.toLowerCase();
+		return aliases.some((a) => a !== "" && a.toLowerCase() === target);
+	}
+	return aliases.some((a) => a !== "" && a === displayText);
+}
