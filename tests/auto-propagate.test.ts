@@ -271,3 +271,58 @@ describe("onChanged — subsequent observations", () => {
 		expect(plugin.propagate).not.toHaveBeenCalled();
 	});
 });
+
+describe("AutoPropagationManager suppression and debounce", () => {
+	it("recordWrite suppresses the immediately following changed event", () => {
+		const { plugin } = makePlugin(
+			makeSettings({ autoPropagateAllAliasChanges: true }),
+		);
+		let aliases = ["Jane"];
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases },
+		}));
+		(parseFrontMatterAliases as any).mockImplementation(() => aliases);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+
+		// Seed snapshot.
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		aliases = ["Jane Smith"];
+		mgr.recordWrite("a.md");
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).not.toHaveBeenCalled();
+	});
+
+	it("debounce coalesces rapid changed events within 500ms into one fire", () => {
+		const { plugin } = makePlugin(
+			makeSettings({ autoPropagateAllAliasChanges: true }),
+		);
+		let aliases = ["Jane"];
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases },
+		}));
+		(parseFrontMatterAliases as any).mockImplementation(() => aliases);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		aliases = ["Jane Smith"];
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(200);
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(200);
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).toHaveBeenCalledTimes(1);
+	});
+});
