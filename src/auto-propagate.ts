@@ -4,10 +4,21 @@ import {
 	type TAbstractFile,
 	TFile,
 } from "obsidian";
+import { getAllAliases } from "./alias-resolver";
 import type { YesAliasesSettings } from "./settings";
 
+const DEBOUNCE_MS = 500;
+const IN_FLIGHT_GRACE_MS = 1000;
 const RECENTLY_CREATED_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const EXPIRY_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
+
+function arraysEqual(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
 
 /**
  * Narrow host interface for the manager. Avoids importing the full
@@ -160,8 +171,75 @@ export class AutoPropagationManager {
 		}
 	}
 
-	private onChanged(_file: TFile): void {
-		// Tasks 6.3 – 6.5
+	private onChanged(file: TFile): void {
+		// Feedback-loop suppression: ignore files we just wrote to.
+		const lastWrite = this.inFlightWrites.get(file.path);
+		if (lastWrite !== undefined) {
+			if (Date.now() - lastWrite < IN_FLIGHT_GRACE_MS) return;
+			// Lazy prune.
+			this.inFlightWrites.delete(file.path);
+		}
+
+		// Per-file trailing debounce.
+		const existing = this.debounceTimers.get(file.path);
+		if (existing) clearTimeout(existing);
+
+		const timer = setTimeout(() => {
+			this.debounceTimers.delete(file.path);
+			this.handleChange(file);
+		}, DEBOUNCE_MS);
+		this.debounceTimers.set(file.path, timer);
+	}
+
+	private handleChange(file: TFile): void {
+		const newAliases = getAllAliases(this.plugin.app, file);
+		const prevAliases = this.aliasSnapshot.get(file.path);
+
+		// Lazy seed — first observation never propagates via the general
+		// branch, but may propagate via the new-note branch.
+		if (prevAliases === undefined) {
+			this.aliasSnapshot.set(file.path, newAliases);
+
+			if (
+				this.recentlyCreated.has(file.path) &&
+				newAliases.length > 0 &&
+				newAliases[0] !== ""
+			) {
+				this.recentlyCreated.delete(file.path);
+				if (this.plugin.settings.autoPropagateNewNoteAliases) {
+					this.triggerPropagate(file);
+				}
+			}
+			return;
+		}
+
+		// Subsequent observations — compare and dispatch.
+		if (arraysEqual(prevAliases, newAliases)) return;
+		this.aliasSnapshot.set(file.path, newAliases);
+
+		// New-note branch: prefer over general if the file is still in
+		// recentlyCreated and the canonical alias just became non-empty.
+		if (
+			this.recentlyCreated.has(file.path) &&
+			newAliases.length > 0 &&
+			newAliases[0] !== "" &&
+			(prevAliases.length === 0 || prevAliases[0] === "")
+		) {
+			this.recentlyCreated.delete(file.path);
+			if (this.plugin.settings.autoPropagateNewNoteAliases) {
+				this.triggerPropagate(file);
+			}
+			return;
+		}
+
+		// General branch.
+		if (this.plugin.settings.autoPropagateAllAliasChanges) {
+			this.triggerPropagate(file);
+		}
+	}
+
+	private triggerPropagate(file: TFile): void {
+		this.plugin.propagate(file, "auto");
 	}
 
 	private pruneExpired(): void {

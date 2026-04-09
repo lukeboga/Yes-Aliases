@@ -145,3 +145,63 @@ describe("AutoPropagationManager vault events", () => {
 		expect(mgr.debugSize().inFlightWrites).toBe(1);
 	});
 });
+
+describe("onChanged — lazy seed", () => {
+	it("first observation seeds the snapshot without propagating", () => {
+		const { plugin } = makePlugin(makeSettings());
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases: ["Jane"] },
+		}));
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane"]);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("jane.md");
+		(mgr as any).onChanged(file);
+
+		// Drive the 500ms debounce.
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).not.toHaveBeenCalled();
+		expect(mgr.debugSize().aliasSnapshot).toBe(1);
+	});
+
+	it("first observation of a recently-created file propagates (new-note branch)", () => {
+		const { plugin } = makePlugin(makeSettings());
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases: ["Q1 review"] },
+		}));
+		(parseFrontMatterAliases as any).mockReturnValue(["Q1 review"]);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("20240315-mtg.md");
+		(mgr as any).onCreate(file);
+		(mgr as any).onChanged(file);
+
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).toHaveBeenCalledTimes(1);
+		expect(plugin.propagate).toHaveBeenCalledWith(file, "auto");
+		expect(mgr.debugSize().recentlyCreated).toBe(0);
+	});
+
+	it("does not propagate when autoPropagateNewNoteAliases is false", () => {
+		const { plugin } = makePlugin(
+			makeSettings({ autoPropagateNewNoteAliases: false }),
+		);
+		(plugin.app as any).metadataCache.getFileCache = vi.fn(() => ({
+			frontmatter: { aliases: ["X"] },
+		}));
+		(parseFrontMatterAliases as any).mockReturnValue(["X"]);
+
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+		const file = makeTFile("a.md");
+		(mgr as any).onCreate(file);
+		(mgr as any).onChanged(file);
+		vi.advanceTimersByTime(500);
+
+		expect(plugin.propagate).not.toHaveBeenCalled();
+	});
+});
