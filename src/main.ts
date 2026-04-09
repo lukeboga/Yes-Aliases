@@ -56,6 +56,13 @@ export default class YesAliasesPlugin extends Plugin {
 		);
 		this.registerCommands();
 		this.registerContextMenus();
+		this.autoPropagate = new AutoPropagationManager(this);
+		this.autoPropagate.start();
+	}
+
+	onunload(): void {
+		this.autoPropagate?.stop();
+		this.autoPropagate = null;
 	}
 
 	async loadSettings(): Promise<void> {

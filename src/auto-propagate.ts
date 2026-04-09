@@ -30,7 +30,7 @@ export interface AutoPropagationHost {
 	settings: YesAliasesSettings;
 	registerEvent(eventRef: EventRef): void;
 	registerInterval(id: number): number;
-	propagate(file: TFile, source: "auto" | "manual"): void;
+	propagate(file: TFile, source: "auto" | "manual"): Promise<void>;
 }
 
 function isMarkdownFile(f: TAbstractFile): f is TFile {
@@ -239,7 +239,7 @@ export class AutoPropagationManager {
 	}
 
 	private triggerPropagate(file: TFile): void {
-		this.plugin.propagate(file, "auto");
+		void this.plugin.propagate(file, "auto");
 	}
 
 	private pruneExpired(): void {

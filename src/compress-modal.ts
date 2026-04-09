@@ -4,7 +4,7 @@ import type { CompressOrphanResult } from "./compress";
 export interface CompressConfirmModalProps {
 	targetName: string;
 	result: CompressOrphanResult;
-	onConfirm: () => void;
+	onConfirm: () => void | Promise<void>;
 }
 
 /**
@@ -58,7 +58,7 @@ export class CompressConfirmModal extends Modal {
 		});
 		confirmButton.addEventListener("click", () => {
 			this.close();
-			this.props.onConfirm();
+			void this.props.onConfirm();
 		});
 
 		// NFR-21: default focus on Cancel.
