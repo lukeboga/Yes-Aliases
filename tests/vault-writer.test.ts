@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { applyFrontmatterRewrites, type FrontmatterRewrite } from "../src/vault-writer";
+import { describe, expect, it, vi } from "vitest";
+import {
+	applyChangesInVault,
+	applyFrontmatterRewrites,
+	type FrontmatterRewrite,
+} from "../src/vault-writer";
+import type { PlannedChange } from "../src/editor-writer";
 
 describe("applyFrontmatterRewrites", () => {
 	it("replaces a single link in frontmatter", () => {
@@ -53,5 +58,48 @@ describe("applyFrontmatterRewrites", () => {
 		const result = applyFrontmatterRewrites(content, [], 0, 17);
 		expect(result.content).toBe(content);
 		expect(result.applied).toBe(0);
+	});
+});
+
+describe("applyChangesInVault", () => {
+	it("applies changes via vault.process and returns applied count", async () => {
+		let processed = "";
+		const app = {
+			vault: {
+				process: vi.fn(async (_file: any, mutator: (c: string) => string) => {
+					processed = mutator("text [[a]] mid [[b]] end");
+				}),
+			},
+		} as any;
+		const changes: PlannedChange[] = [
+			{ from: 5, to: 10, original: "[[a]]", newText: "[[a|A]]" },
+			{ from: 15, to: 20, original: "[[b]]", newText: "[[b|B]]" },
+		];
+		const applied = await applyChangesInVault(app, { path: "x.md" } as any, changes);
+		expect(applied).toBe(2);
+		expect(processed).toBe("text [[a|A]] mid [[b|B]] end");
+	});
+
+	it("skips mismatched originals", async () => {
+		let processed = "";
+		const app = {
+			vault: {
+				process: vi.fn(async (_file: any, mutator: (c: string) => string) => {
+					processed = mutator("text [[a]] end");
+				}),
+			},
+		} as any;
+		const changes: PlannedChange[] = [
+			{ from: 5, to: 10, original: "[[WRONG]]", newText: "[[x|X]]" },
+		];
+		const applied = await applyChangesInVault(app, { path: "x.md" } as any, changes);
+		expect(applied).toBe(0);
+		expect(processed).toBe("text [[a]] end");
+	});
+
+	it("returns 0 for empty change list without calling vault.process", async () => {
+		const app = { vault: { process: vi.fn() } } as any;
+		expect(await applyChangesInVault(app, { path: "x.md" } as any, [])).toBe(0);
+		expect(app.vault.process).not.toHaveBeenCalled();
 	});
 });

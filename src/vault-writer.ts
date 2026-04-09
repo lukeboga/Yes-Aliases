@@ -12,9 +12,8 @@ import {
 	getLinkpathForResolution,
 	getLinkpathFromFrontmatterLink,
 	getYamlSectionRange,
-	isEmbed,
 	isInsideInlineCode,
-	isInsideSection,
+	isLinkExcluded,
 	toLinkInput,
 } from "./link-filter";
 import type { YesAliasesSettings } from "./settings";
@@ -130,11 +129,15 @@ function planRewrites(
 
 	if (cache?.links) {
 		const excludedRanges = buildExcludedRanges(cache.sections);
+		// planRewrites has no content yet — pass "" so isLinkExcluded only
+		// applies the section-overlap and preserveHeadingAndBlockAnchors checks.
+		// Inline-code detection happens at apply time against real content.
+		const content = "";
 		for (const link of cache.links) {
+			if (isLinkExcluded(link, content, excludedRanges, settings)) continue;
+
 			const startOffset = link.position.start.offset;
 			const endOffset = link.position.end.offset;
-
-			if (isInsideSection(startOffset, endOffset, excludedRanges)) continue;
 
 			const linkpath = getLinkpathForResolution(link);
 			const { alias } = resolveAlias(app, linkpath, file.path);
@@ -195,7 +198,6 @@ function applyRewrites(
 		if (actual !== rewrite.original) continue;
 
 		if (isInsideInlineCode(content, rewrite.startOffset, rewrite.endOffset)) continue;
-		if (isEmbed(content, rewrite.startOffset)) continue;
 
 		result =
 			result.slice(0, rewrite.startOffset) +
@@ -290,4 +292,32 @@ async function executeBulk(
 	}
 
 	return { filesProcessed, updated: totalUpdated, skipped: totalSkipped };
+}
+
+/**
+ * Apply a precomputed change list to a closed file via vault.process().
+ * Changes applied in reverse offset order with per-change safety check.
+ *
+ * Returns the number of changes successfully applied. If the list is
+ * empty, vault.process is never called (no mtime bump).
+ */
+export async function applyChangesInVault(
+	app: App,
+	file: TFile,
+	changes: import("./editor-writer").PlannedChange[],
+): Promise<number> {
+	if (changes.length === 0) return 0;
+	let applied = 0;
+	await app.vault.process(file, (content) => {
+		const sorted = [...changes].sort((a, b) => b.from - a.from);
+		let result = content;
+		for (const change of sorted) {
+			const actual = result.slice(change.from, change.to);
+			if (actual !== change.original) continue;
+			result = result.slice(0, change.from) + change.newText + result.slice(change.to);
+			applied++;
+		}
+		return result;
+	});
+	return applied;
 }
