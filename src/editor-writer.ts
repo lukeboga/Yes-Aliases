@@ -18,6 +18,45 @@ export interface WriteStats {
 	skipped: number;
 }
 
+/**
+ * A precomputed change to apply to a file. `from` and `to` are byte
+ * offsets into the file content at the time the change was planned.
+ * `original` is used as a safety check at apply time.
+ */
+export interface PlannedChange {
+	from: number;
+	to: number;
+	original: string;
+	newText: string;
+}
+
+/**
+ * Apply a precomputed change list to an open editor. Changes are applied
+ * in reverse offset order so earlier changes don't shift later offsets.
+ * Each change is verified against the current editor content before
+ * applying; mismatches are skipped silently.
+ *
+ * Returns the number of changes successfully applied.
+ */
+export function applyChangesInEditor(
+	editor: Editor,
+	changes: PlannedChange[],
+): number {
+	if (changes.length === 0) return 0;
+	const content = editor.getValue();
+	const sorted = [...changes].sort((a, b) => b.from - a.from);
+	let applied = 0;
+	for (const change of sorted) {
+		const actual = content.slice(change.from, change.to);
+		if (actual !== change.original) continue;
+		const from = editor.offsetToPos(change.from);
+		const to = editor.offsetToPos(change.to);
+		editor.replaceRange(change.newText, from, to);
+		applied++;
+	}
+	return applied;
+}
+
 /** Result of attempting to update the link under the cursor. */
 export interface CursorUpdateResult {
 	/** Whether a wikilink was found at the cursor position. */
