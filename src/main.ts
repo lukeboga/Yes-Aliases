@@ -83,6 +83,56 @@ export default class YesAliasesPlugin extends Plugin {
 		);
 	}
 
+	private async runCompress(file: TFile, keepCount: number): Promise<void> {
+		const outcome = planCompressOutcome(
+			this.app,
+			file,
+			keepCount,
+			this.settings,
+		);
+		switch (outcome.kind) {
+			case "noop":
+				new Notice("Aliases already at or below the keep count");
+				return;
+			case "refuse": {
+				const { orphans, affectedSourcePaths } = outcome.result;
+				new Notice(
+					`Cannot compress aliases — ${orphans.length} link${orphans.length === 1 ? "" : "s"} across ${affectedSourcePaths.size} file${affectedSourcePaths.size === 1 ? "" : "s"} still show alias entries that would be removed. Run "Propagate aliases across vault" first, or enable "Warn instead of blocking" in settings.`,
+				);
+				return;
+			}
+			case "warn": {
+				const modal = new CompressConfirmModal(this.app, {
+					targetName: file.basename,
+					result: outcome.result,
+					onConfirm: async () => {
+						const removed = await applyCompress(
+							this.app,
+							file,
+							outcome.keepCount,
+						);
+						new Notice(
+							`Compressed ${file.basename}: ${removed} alias${removed === 1 ? "" : "es"} removed`,
+						);
+					},
+				});
+				modal.open();
+				return;
+			}
+			case "proceed": {
+				const removed = await applyCompress(
+					this.app,
+					file,
+					outcome.keepCount,
+				);
+				new Notice(
+					`Compressed ${file.basename}: ${removed} alias${removed === 1 ? "" : "es"} removed`,
+				);
+				return;
+			}
+		}
+	}
+
 	private reportPropagateStats(
 		stats: PropagateStats,
 		source: "auto" | "manual",
@@ -158,6 +208,32 @@ export default class YesAliasesPlugin extends Plugin {
 						`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
 					);
 				}
+			},
+		});
+
+		this.addCommand({
+			id: "compress-aliases-file",
+			name: "Compress aliases in current file",
+			callback: async () => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file) {
+					new Notice("No active file");
+					return;
+				}
+				await this.runCompress(file, this.settings.aliasesKeepCount);
+			},
+		});
+
+		this.addCommand({
+			id: "compress-aliases-file-to-main",
+			name: "Compress aliases to main alias",
+			callback: async () => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file) {
+					new Notice("No active file");
+					return;
+				}
+				await this.runCompress(file, 1);
 			},
 		});
 
