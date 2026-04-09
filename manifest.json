@@ -3,7 +3,7 @@
 	"name": "Yes Aliases",
 	"version": "0.1.0",
 	"minAppVersion": "1.0.0",
-	"description": "Propagate aliases into wikilink display text.",
+	"description": "Complete alias lifecycle for wikilinks: pull, propagate, compress, remove. Scope levels: cursor, file, folder, vault.",
 	"author": "LBM",
 	"authorUrl": "https://github.com/lukeboga",
 	"isDesktopOnly": false

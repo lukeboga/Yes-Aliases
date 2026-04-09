@@ -25,7 +25,7 @@ Each command operates at one or more scope levels — cursor, file, folder, vaul
 
 **Automatic updates** — opt-in: auto-propagate when a new note gets its first alias (on by default), or whenever any note's alias changes (off by default)
 
-**Inclusive link coverage** — all markdown-target wikilinks and embeds participate, including headings and block references. Opt-out via one setting for users who prefer Obsidian's native anchor rendering.
+**Inclusive link coverage** — all markdown-target wikilinks participate, including heading links and block references (`[[Note#Heading]]`, `[[Note#^block-id]]`). Opt-out via one setting for users who prefer Obsidian's native anchor rendering. (Embeds are not yet rewritten — see "Known limitations" below; embed support is scheduled for v0.1.1.)
 
 ## How propagate and remove stay safe
 
@@ -86,7 +86,7 @@ If any backlink in the vault still shows an alias that compress would remove, th
 | --- | --- | --- |
 | Overwrite existing display text | Off | When enabled, links that already have display text get their text replaced with the target note's alias. When disabled, links with display text are left alone. |
 | Update frontmatter links | On | When enabled, wikilinks inside frontmatter properties are included in alias updates. When disabled, only links in the note body are updated. |
-| Preserve heading and block anchors | Off | When enabled, links to a specific heading or block (`[[Note#Heading]]`, `[[Note#^block-id]]`) are left alone. Obsidian's built-in rendering is used instead of the note's alias. Turn this on if your filenames are already descriptive. |
+| Preserve heading and block anchors | Off | When enabled, links to a specific heading or block (`[[Note#Heading]]`, `[[Note#^block-id]]`) are left alone. Obsidian's built-in rendering is used instead of the note's alias. Turn this on if your filenames are already descriptive. (When embed support lands in v0.1.1, this same setting will also apply to heading and block embeds.) |
 | Match aliases regardless of letter case | Off | When enabled, a link showing "foo bar" matches an alias "Foo Bar" and gets rewritten to the alias's exact casing. Helps clean up casing drift. |
 
 ### Automatic updates
@@ -138,6 +138,8 @@ The plugin skips the following and leaves them unchanged:
 - Heading and block references (when "Preserve heading and block anchors" is on)
 
 ## Known limitations
+
+**Embeds are not yet rewritten.** v0.1.0 ships alias propagation for wikilinks only — including the inclusive heading and block reference variants — but embeds (`![[Note]]`, `![[Note#Heading]]`, `![[Note#^block]]`, `![[Note|Caption]]`) are not touched by any command. The architecture supports them and the fix is mechanical; embed support is scheduled for v0.1.1. The "Preserve heading and block anchors" setting will apply to heading and block embeds when v0.1.1 lands, with no migration required.
 
 **Right-clicking a frontmatter wikilink in the Properties UI updates every frontmatter link to that target, not just the clicked one.** If a note has multiple frontmatter wikilinks pointing to the same target file (e.g. the same target listed twice in a `links` property), right-clicking any of them and selecting "Update link alias" or "Remove link alias" rewrites all of them in one operation. Body links to the same target are not affected.
 

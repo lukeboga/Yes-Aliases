@@ -7,6 +7,8 @@ For older entries, see [changelog archive](changelog/archive/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-09
+
 ### Added
 - Alias propagation commands: "Propagate aliases for current file" and "Propagate aliases across vault" (palette), "Propagate aliases for files in folder" (file explorer context menu)
 - Automatic alias propagation: opt-in tier for new notes (on by default, narrow scope via in-memory recently-created set) and broader tier for any alias change (off by default, broad scope via alias snapshot diff)
@@ -24,7 +26,10 @@ For older entries, see [changelog archive](changelog/archive/).
 - README rewrite for the v0.1.0 feature set with safe-rewrite rule explanation, full settings reference, and a note for users with descriptive filenames
 
 ### Changed
-- Link-type boundary rules are now inclusive by default: heading links, block references, and embeds (plain, captioned, heading, block) all participate in pull, push, and remove operations. Enable "Preserve heading and block anchors" in settings to restore Obsidian's native anchor rendering for heading and block variants.
+- Link-type boundary rules are now inclusive by default for wikilinks: heading links and block references (`[[Note#Heading]]`, `[[Note#^block-id]]`) participate in pull, push, and remove operations. Enable "Preserve heading and block anchors" in settings to restore Obsidian's native anchor rendering for these variants.
+
+### Known limitations
+- **Embeds (`![[..]]`, `![[..#Heading]]`, `![[..#^block]]`, `![[..|Caption]]`) are not yet rewritten by any command.** The inclusive-boundary architecture is in place but the writers do not yet iterate the embed cache. Embed support is scheduled for v0.1.1; the "Preserve heading and block anchors" setting will then apply to heading and block embeds in addition to their wikilink counterparts. Tracked in `project/planning/backlog.md`.
 - Migrate from multi-plugin monorepo to single-plugin release structure
 - Rename from "Aliases Hub" to "Yes Aliases"
 - Replace deny-all .gitignore with standard ignores

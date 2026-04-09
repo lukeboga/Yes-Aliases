@@ -496,29 +496,45 @@ These procedures cover the new command families added in 0004. Each is copy-past
 3. **Expected:** All non-ignored alias-matching links are stripped. `_archive` files are unchanged. Notice reports a consolidated count.
 4. **Cleanup:** Remove `_archive` from ignored folders.
 
-### 9.15 Inclusive boundary — embeds and anchors
+### 9.15a Inclusive boundary — wikilink heading and block anchors
 
 1. **Setup:** `other.md` has `aliases: [Other Alias]` and a `## Heading` plus a `paragraph ^abc` block. Create a file with:
    ```markdown
-   ![[other]]
-   ![[other#Heading]]
-   ![[other#^abc]]
-   ![[other|Caption]]
    [[other#Heading]]
    [[other#^abc]]
    ```
 2. **Setup:** Confirm **"Preserve heading and block anchors"** is off (default).
 3. **Action:** Run **"Update all links in current file"** (existing pull-update).
 4. **Expected:**
+   - `[[other#Heading]]` → `[[other#Heading|Other Alias]]`
+   - `[[other#^abc]]` → `[[other#^abc|Other Alias]]`
+5. **Action:** Enable **"Preserve heading and block anchors"** and re-run on a fresh fixture.
+6. **Expected:** Heading and block wikilink variants are now skipped.
+7. **Cleanup:** Disable **"Preserve heading and block anchors"**.
+
+### 9.15b Inclusive boundary — embeds (DEFERRED to v0.1.1)
+
+> **Status:** v0.1.0 does not iterate `cache.embeds` in any writer. This scenario is preserved for v0.1.1 verification. Full root-cause analysis, fix sketch, and forward-compat reasoning live in `project/planning/backlog.md` → "v0.1.1 — Embed support".
+
+1. **Setup:** Same `other.md` as 9.15a. Create a file with:
+   ```markdown
+   ![[other]]
+   ![[other#Heading]]
+   ![[other#^abc]]
+   ![[other|Caption]]
+   ```
+2. **Setup:** Confirm **"Preserve heading and block anchors"** is off (default).
+3. **Action:** Run **"Update all links in current file"** (existing pull-update).
+4. **Expected after v0.1.1 fix:**
    - `![[other]]` → `![[other|Other Alias]]`
    - `![[other#Heading]]` → `![[other#Heading|Other Alias]]`
    - `![[other#^abc]]` → `![[other#^abc|Other Alias]]`
    - `![[other|Caption]]` unchanged (custom caption preserved unless overwrite is on)
-   - `[[other#Heading]]` → `[[other#Heading|Other Alias]]`
-   - `[[other#^abc]]` → `[[other#^abc|Other Alias]]`
 5. **Action:** Enable **"Preserve heading and block anchors"** and re-run.
-6. **Expected:** Heading and block variants (both embed and wikilink) are now skipped. Plain embed `![[other]]` still participates.
+6. **Expected after v0.1.1 fix:** Heading and block embed variants are now skipped. Plain embed `![[other]]` still participates.
 7. **Cleanup:** Disable **"Preserve heading and block anchors"**.
+
+**v0.1.0 actual (recorded):** all four `![[..]]` embeds remain unchanged after pull-update. Wikilink anchored variants (9.15a) work correctly.
 
 ### 9.16 Context menu — Remove link alias (body wikilink, source mode)
 
