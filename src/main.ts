@@ -181,10 +181,10 @@ export default class YesAliasesPlugin extends Plugin {
 		this.addCommand({
 			id: "update-links-in-file",
 			name: "Update all links in current file",
-			editorCallback: (editor, view) => {
+			editorCallback: async (editor, view) => {
 				const file = view.file;
 				if (!file) return;
-				const stats = updateLinksInFile(
+				const stats = await updateLinksInFile(
 					this.app,
 					editor,
 					file,
@@ -237,10 +237,10 @@ export default class YesAliasesPlugin extends Plugin {
 		this.addCommand({
 			id: "remove-link-aliases-in-file",
 			name: "Remove link aliases in current file",
-			editorCallback: (editor, view) => {
+			editorCallback: async (editor, view) => {
 				const file = view.file;
 				if (!file) return;
-				const stats = removeLinksInFile(
+				const stats = await removeLinksInFile(
 					this.app,
 					editor,
 					file,
@@ -487,7 +487,7 @@ export default class YesAliasesPlugin extends Plugin {
 				menu.addItem((item) => {
 					item.setTitle("Update link alias")
 						.setIcon("links-going-out")
-						.onClick(() => {
+						.onClick(async () => {
 							const editor = view.editor;
 							if (!editor) return;
 
@@ -548,7 +548,7 @@ export default class YesAliasesPlugin extends Plugin {
 							// Properties UI, not from CodeMirror.
 							editor.focus();
 
-							const stats = updateLinksInFile(
+							const stats = await updateLinksInFile(
 								this.app,
 								editor,
 								sourceFile,
@@ -569,7 +569,7 @@ export default class YesAliasesPlugin extends Plugin {
 				menu.addItem((item) => {
 					item.setTitle("Remove link alias")
 						.setIcon("unlink")
-						.onClick(() => {
+						.onClick(async () => {
 							const editor = view.editor;
 							if (!editor) return;
 
@@ -601,7 +601,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 							// Properties UI path — inherits all-FM-links-to-target limitation.
 							editor.focus();
-							const stats = removeLinksInFile(
+							const stats = await removeLinksInFile(
 								this.app,
 								editor,
 								sourceFile,

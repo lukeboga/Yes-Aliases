@@ -31,5 +31,6 @@ For older entries, see [changelog archive](changelog/archive/).
 - Move dev vault to external path via .env configuration
 
 ### Fixed
+- Frontmatter wikilinks no longer silently fail to rewrite in Live Preview mode. Affects pull-update ("Update all links in current file"), remove ("Remove link aliases in current file"), and the Properties UI right-click fallbacks for both. All frontmatter rewrites now route through `vault.process` regardless of editor mode; the editor view auto-syncs from disk
 - Alias resolution now handles `alias` (singular) frontmatter key via `parseFrontMatterStringArray` fallback
 - "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off

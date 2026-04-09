@@ -10,6 +10,7 @@ import {
 	isLinkExcluded,
 	toLinkInput,
 } from "./link-filter";
+import { applyChangesInVault } from "./vault-writer";
 import type { YesAliasesSettings } from "./settings";
 
 /** Stats returned after a write operation. */
@@ -177,13 +178,13 @@ export interface UpdateLinksInFileOptions {
  * Use `options.targetFile` to scope to a single target, and
  * `options.frontmatterOnly` to skip body links entirely.
  */
-export function updateLinksInFile(
+export async function updateLinksInFile(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
 	options: UpdateLinksInFileOptions = {},
-): WriteStats {
+): Promise<WriteStats> {
 	const { targetFile, frontmatterOnly = false } = options;
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache) return { updated: 0, skipped: 0 };
@@ -199,11 +200,8 @@ export function updateLinksInFile(
 	}
 
 	const content = editor.getValue();
-	const rewrites: Array<{
-		from: number;
-		to: number;
-		newText: string;
-	}> = [];
+	const rewrites: PlannedChange[] = [];
+	let hadFmRewrite = false;
 	let skipped = 0;
 
 	// Body links
@@ -229,6 +227,7 @@ export function updateLinksInFile(
 				rewrites.push({
 					from: link.position.start.offset,
 					to: link.position.end.offset,
+					original: link.original,
 					newText: decision.newText,
 				});
 			}
@@ -264,23 +263,26 @@ export function updateLinksInFile(
 						rewrites.push({
 							from: offset.start,
 							to: offset.end,
+							original: link.original,
 							newText: decision.newText,
 						});
 						searchFrom.set(link.original, offset.end);
+						hadFmRewrite = true;
 					}
 				}
 			}
 		}
 	}
 
-	// Apply all rewrites in reverse offset order
-	rewrites.sort((a, b) => b.from - a.from);
-
-	for (const rewrite of rewrites) {
-		const from = editor.offsetToPos(rewrite.from);
-		const to = editor.offsetToPos(rewrite.to);
-		editor.replaceRange(rewrite.newText, from, to);
+	// Dual-dispatch: FM rewrites in Live Preview are silently dropped by
+	// the Properties widget if routed through editor.replaceRange. Route
+	// all changes through vault.process when any FM change is present;
+	// the editor view auto-syncs from disk after the write.
+	if (hadFmRewrite) {
+		const applied = await applyChangesInVault(app, file, rewrites);
+		return { updated: applied, skipped };
 	}
 
-	return { updated: rewrites.length, skipped };
+	const applied = applyChangesInEditor(editor, rewrites);
+	return { updated: applied, skipped };
 }

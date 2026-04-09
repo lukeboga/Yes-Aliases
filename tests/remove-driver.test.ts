@@ -114,7 +114,7 @@ describe("removeLinkUnderCursor", () => {
 });
 
 describe("removeLinksInFile", () => {
-	it("strips all matching aliases in a file (safe mode)", () => {
+	it("strips all matching aliases in a file (safe mode)", async () => {
 		const content = "A [[jane|Jane]] and [[bob|click here]]";
 		const replaceRange = vi.fn();
 		const editor = {
@@ -161,13 +161,86 @@ describe("removeLinksInFile", () => {
 		} as any;
 		(parseFrontMatterAliases as any).mockImplementation((fm: any) => fm?.aliases ?? null);
 
-		const stats = removeLinksInFile(app, editor, sourceFile, makeSettings());
+		const stats = await removeLinksInFile(app, editor, sourceFile, makeSettings());
 		// "Jane" matches jane's aliases → stripped. "click here" does not match bob's → skipped.
 		expect(stats.updated).toBe(1);
 		expect(stats.skipped).toBe(1);
 	});
 
-	it("strips prose display text in aggressive mode", () => {
+	it("routes through vault.process when frontmatter changes exist (FM-LP fix)", async () => {
+		// YAML on lines 1-3, FM link [[jane|Jane]] at offsets 14-27.
+		// Body link [[jane|Jane]] at offsets 36-49.
+		const content =
+			'---\nrelated: "[[jane|Jane]]"\n---\n\nA [[jane|Jane]] x';
+		const replaceRange = vi.fn();
+		const editor = {
+			getValue: () => content,
+			offsetToPos: (o: number) => ({ line: 0, ch: o }),
+			replaceRange,
+		} as any;
+		let processed: string | null = null;
+		const sourceFile = makeTFile("a.md");
+		const janeFile = makeTFile("jane.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn((f: any) => {
+					if (f.path === sourceFile.path) {
+						return {
+							links: [
+								{
+									original: "[[jane|Jane]]",
+									position: {
+										start: { offset: 36 },
+										end: { offset: 49 },
+									},
+								},
+							],
+							frontmatterLinks: [
+								{ link: "jane", original: "[[jane|Jane]]" },
+							],
+							sections: [
+								{
+									type: "yaml",
+									position: {
+										start: { offset: 0 },
+										end: { offset: 32 },
+									},
+								},
+							],
+						};
+					}
+					if (f.path === janeFile.path) {
+						return { frontmatter: { aliases: ["Jane Smith", "Jane"] } };
+					}
+					return null;
+				}),
+				getFirstLinkpathDest: vi.fn(() => janeFile),
+			},
+			vault: {
+				process: vi.fn(
+					async (_file: any, mut: (c: string) => string) => {
+						processed = mut(content);
+						return processed;
+					},
+				),
+			},
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith", "Jane"]);
+
+		const stats = await removeLinksInFile(
+			app,
+			editor,
+			sourceFile,
+			makeSettings(),
+		);
+
+		expect(app.vault.process).toHaveBeenCalled();
+		expect(replaceRange).not.toHaveBeenCalled();
+		expect(stats.updated).toBe(2);
+		expect(processed).toBe('---\nrelated: "[[jane]]"\n---\n\nA [[jane]] x');
+	});
+
+	it("strips prose display text in aggressive mode", async () => {
 		const content = "A [[bob|click here]]";
 		const editor = {
 			getValue: () => content,
@@ -200,7 +273,7 @@ describe("removeLinksInFile", () => {
 		} as any;
 		(parseFrontMatterAliases as any).mockReturnValue(["Bob"]);
 
-		const stats = removeLinksInFile(
+		const stats = await removeLinksInFile(
 			app,
 			editor,
 			sourceFile,

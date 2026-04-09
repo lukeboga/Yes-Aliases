@@ -2,8 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	applyChangesInEditor,
 	skipReasonMessage,
+	updateLinksInFile,
 	type PlannedChange,
 } from "../src/editor-writer";
+import { parseFrontMatterAliases, TFile } from "obsidian";
+import type { YesAliasesSettings } from "../src/settings";
+
+function makeTFile(path: string, extension = "md"): TFile {
+	const f = new TFile();
+	f.path = path;
+	f.extension = extension;
+	return f;
+}
+
+function makeSettings(partial: Partial<YesAliasesSettings> = {}): YesAliasesSettings {
+	return {
+		overwriteExisting: false,
+		updateFrontmatterLinks: true,
+		ignoredFolders: [],
+		preserveHeadingAndBlockAnchors: false,
+		caseInsensitiveAliasMatch: false,
+		autoPropagateNewNoteAliases: true,
+		autoPropagateAllAliasChanges: false,
+		autoPropagateNoticeThreshold: 5,
+		aliasesKeepCount: 1,
+		compressWarnInsteadOfBlock: false,
+		removeIgnoresPropagationSafety: false,
+		...partial,
+	};
+}
 
 describe("skipReasonMessage", () => {
 	it("returns correct message for no-alias", () => {
@@ -73,5 +100,82 @@ describe("applyChangesInEditor", () => {
 	it("returns 0 for empty change list", () => {
 		const editor = { getValue: () => "", offsetToPos: vi.fn(), replaceRange: vi.fn() } as any;
 		expect(applyChangesInEditor(editor, [])).toBe(0);
+	});
+});
+
+describe("updateLinksInFile", () => {
+	it("routes through vault.process when frontmatter changes exist (FM-LP fix)", async () => {
+		// YAML on lines 1-3, FM link [[jane|Jane]] at offsets 14-27.
+		// Body link [[jane|Jane]] at offsets 36-49.
+		const content =
+			'---\nrelated: "[[jane|Jane]]"\n---\n\nA [[jane|Jane]] x';
+		const replaceRange = vi.fn();
+		const editor = {
+			getValue: () => content,
+			offsetToPos: (o: number) => ({ line: 0, ch: o }),
+			replaceRange,
+		} as any;
+		let processed: string | null = null;
+		const sourceFile = makeTFile("a.md");
+		const janeFile = makeTFile("jane.md");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn((f: any) => {
+					if (f.path === sourceFile.path) {
+						return {
+							links: [
+								{
+									original: "[[jane|Jane]]",
+									position: {
+										start: { offset: 36 },
+										end: { offset: 49 },
+									},
+								},
+							],
+							frontmatterLinks: [
+								{ link: "jane", original: "[[jane|Jane]]" },
+							],
+							sections: [
+								{
+									type: "yaml",
+									position: {
+										start: { offset: 0 },
+										end: { offset: 32 },
+									},
+								},
+							],
+						};
+					}
+					if (f.path === janeFile.path) {
+						return { frontmatter: { aliases: ["Jane Smith", "Jane"] } };
+					}
+					return null;
+				}),
+				getFirstLinkpathDest: vi.fn(() => janeFile),
+			},
+			vault: {
+				process: vi.fn(
+					async (_file: any, mut: (c: string) => string) => {
+						processed = mut(content);
+						return processed;
+					},
+				),
+			},
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith", "Jane"]);
+
+		const stats = await updateLinksInFile(
+			app,
+			editor,
+			sourceFile,
+			makeSettings({ overwriteExisting: true }),
+		);
+
+		expect(app.vault.process).toHaveBeenCalled();
+		expect(replaceRange).not.toHaveBeenCalled();
+		expect(stats.updated).toBe(2);
+		expect(processed).toBe(
+			'---\nrelated: "[[jane|Jane Smith]]"\n---\n\nA [[jane|Jane Smith]] x',
+		);
 	});
 });

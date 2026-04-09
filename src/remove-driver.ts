@@ -179,19 +179,20 @@ export function removeLinkUnderCursor(
 }
 
 /** Remove display text from all qualifying links in the active file. */
-export function removeLinksInFile(
+export async function removeLinksInFile(
 	app: App,
 	editor: Editor,
 	file: TFile,
 	settings: YesAliasesSettings,
 	options: RemoveOptions = {},
-): RemoveFileStats {
+): Promise<RemoveFileStats> {
 	const cache = app.metadataCache.getFileCache(file);
 	if (!cache) return { updated: 0, skipped: 0 };
 
 	const content = editor.getValue();
 	const changes: PlannedChange[] = [];
 	let skipped = 0;
+	let hadFmChanges = false;
 
 	const hasBodyLinks =
 		!options.frontmatterOnly && cache.links && cache.links.length > 0;
@@ -261,11 +262,18 @@ export function removeLinksInFile(
 					original: link.original,
 					newText: decision.newText,
 				});
+				hadFmChanges = true;
 			}
 		}
 	}
 
-	const updated = applyChangesInEditor(editor, changes);
+	// Dual-dispatch: FM rewrites in Live Preview are silently dropped by
+	// the Properties widget if routed through editor.replaceRange. Route
+	// all changes through vault.process when any FM change is present;
+	// the editor view auto-syncs from disk after the write.
+	const updated = hadFmChanges
+		? await applyChangesInVault(app, file, changes)
+		: applyChangesInEditor(editor, changes);
 	return { updated, skipped };
 }
 
