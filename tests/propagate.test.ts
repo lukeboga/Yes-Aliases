@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
 	propagateFile,
 	propagateFolder,
+	propagateVault,
 	type PropagateStats,
 } from "../src/propagate";
 import type { YesAliasesSettings } from "../src/settings";
@@ -215,5 +216,37 @@ describe("propagateFolder", () => {
 			source: "manual",
 		});
 		expect(stats.targetsProcessed).toBe(1);
+	});
+});
+
+describe("propagateVault", () => {
+	it("iterates every markdown file and skips targets in ignoredFolders", async () => {
+		const a = makeTFile("a.md");
+		const b = makeTFile("_archive/b.md");
+		const c = makeTFile("c.md");
+
+		const app = {
+			vault: {
+				getMarkdownFiles: vi.fn(() => [a, b, c]),
+				getAbstractFileByPath: vi.fn(),
+				process: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: {} })),
+				getFirstLinkpathDest: vi.fn(),
+				resolvedLinks: {},
+			},
+			workspace: { iterateAllLeaves: vi.fn(() => {}) },
+		} as any;
+		(parseFrontMatterAliases as any).mockReturnValue(null);
+		(parseFrontMatterStringArray as any).mockReturnValue(null);
+
+		const stats = await propagateVault(
+			app,
+			makeSettings({ ignoredFolders: ["_archive"] }),
+			{ source: "manual" },
+		);
+		// b.md is in _archive and is skipped as a target per §15.4.
+		expect(stats.targetsProcessed).toBe(2);
 	});
 });

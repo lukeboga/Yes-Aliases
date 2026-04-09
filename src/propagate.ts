@@ -316,3 +316,45 @@ export async function propagateFolder(
 
 	return aggregate;
 }
+
+/**
+ * Propagate aliases for every markdown file in the vault.
+ *
+ * Targets in ignoredFolders are SKIPPED ENTIRELY (§15 resolution 4) — users
+ * who want a specific ignored file propagated must run the file-scope
+ * command explicitly. Source iteration inside propagateFile already filters
+ * ignored folders, so ignored-folder source files are never touched either.
+ *
+ * Yields to the UI every 50 targets for large vaults.
+ */
+export async function propagateVault(
+	app: App,
+	settings: YesAliasesSettings,
+	options: PropagateOptions,
+): Promise<PropagateStats> {
+	const allFiles = app.vault.getMarkdownFiles();
+	const targets = allFiles.filter((f) => !isIgnored(f.path, settings.ignoredFolders));
+
+	const aggregate: PropagateStats = {
+		targetsProcessed: 0,
+		filesTouched: 0,
+		linksRewritten: 0,
+		skipped: 0,
+	};
+
+	const YIELD_INTERVAL = 50;
+	let count = 0;
+	for (const target of targets) {
+		const s = await propagateFile(app, target, settings, options);
+		aggregate.targetsProcessed += s.targetsProcessed;
+		aggregate.filesTouched += s.filesTouched;
+		aggregate.linksRewritten += s.linksRewritten;
+		aggregate.skipped += s.skipped;
+		count++;
+		if (count % YIELD_INTERVAL === 0) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+	}
+
+	return aggregate;
+}
