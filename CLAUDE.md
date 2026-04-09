@@ -26,6 +26,20 @@ Dev vault configured via `.env` file with `OBSIDIAN_VAULT_PATH=/path/to/vault`. 
 
 See CONTRIBUTING.md for architecture, module reference, code style, Obsidian API rules, accessibility requirements, and release process.
 
+## Obsidian Skills (REQUIRED — invoke via the Skill tool)
+
+The `obsidian-skills` plugin exposes specialized skills for working with Obsidian vaults and Obsidian Flavored Markdown. **These are the highest-leverage tooling for this project — use them whenever they apply, do not roll your own.** Skills override default behavior; check for an applicable skill BEFORE writing code, running CLI commands, or generating Obsidian-specific syntax.
+
+| Skill | When to use | Why it matters here |
+|---|---|---|
+| `obsidian:obsidian-cli` | Any time you need to interact with the dev vault: reload the plugin after `install:vault`, capture runtime errors, execute JavaScript inside Obsidian, take screenshots, read/create/search notes, manage plugins or themes | The full plugin dev loop runs through this skill. `obsidian plugin:reload id=yes-aliases` and `obsidian dev:errors` are the canonical way to verify a runtime change. Phase 7 onward (and any manual testing) must use this skill — never instruct the user to reload by hand when the CLI can do it. |
+| `obsidian:obsidian-markdown` | Writing or editing `.md` files that exercise Obsidian-specific syntax: wikilinks, embeds, callouts, frontmatter, tags, block refs, heading anchors | Test fixtures, README examples, manual-testing walkthroughs, and any narrative documentation that demonstrates plugin behavior must use correct Obsidian Flavored Markdown. Do not improvise wikilink or callout syntax. |
+| `obsidian:obsidian-bases` | Anything involving `.base` files (database-like views) | Not currently used in this plugin's source, but the dev vault may contain Bases that need reading or editing. |
+| `obsidian:json-canvas` | Anything involving `.canvas` files (visual canvases, mind maps, flowcharts) | Same — consult on demand if the dev vault contains canvases that interact with the plugin. |
+| `obsidian:defuddle` | Reading any URL the user provides (online docs, blog posts, articles) | Use instead of `WebFetch` for general web pages — saves tokens and yields cleaner markdown. |
+
+**Rule:** Per the superpowers `using-superpowers` skill, if there is even a 1% chance an Obsidian skill applies, invoke it via the `Skill` tool before acting. Do not paraphrase from memory and do not skip the skill because the task "feels simple" — the skills carry current syntax and CLI flag details that may have shifted since training.
+
 ## Handoff Protocol
 
 Cross-session continuity system. Two layers: **persistent state** (survives indefinitely) and **session handoffs** (immediate context transfer).
