@@ -8,7 +8,13 @@ import {
 	parseFrontMatterAliases,
 	parseFrontMatterStringArray,
 	TFile,
+	TFolder,
+	Vault,
 } from "obsidian";
+import {
+	removeLinksInFolder,
+	removeLinksInVault,
+} from "../src/remove-driver";
 
 /** Build a TFile-instance test fixture so `instanceof TFile` checks pass under the mock. */
 function makeTFile(path: string, extension = "md"): TFile {
@@ -201,5 +207,54 @@ describe("removeLinksInFile", () => {
 			makeSettings({ removeIgnoresPropagationSafety: true }),
 		);
 		expect(stats.updated).toBe(1);
+	});
+});
+
+describe("removeLinksInFolder", () => {
+	it("processes all markdown files in the folder", async () => {
+		const folder = new TFolder();
+		folder.path = "notes";
+		folder.name = "notes";
+		const a = makeTFile("notes/a.md");
+		(Vault.recurseChildren as any).mockImplementation(
+			(_f: any, cb: (child: any) => void) => {
+				cb(a);
+			},
+		);
+
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ links: [], frontmatterLinks: [], sections: [] })),
+				getFirstLinkpathDest: vi.fn(),
+			},
+			vault: { process: vi.fn() },
+		} as any;
+
+		const stats = await removeLinksInFolder(app, folder, makeSettings());
+		expect(stats.filesProcessed).toBe(0); // no links to remove → no file written
+	});
+});
+
+describe("removeLinksInVault", () => {
+	it("skips files in ignoredFolders", async () => {
+		const a = makeTFile("a.md");
+		const b = makeTFile("_archive/b.md");
+		const app = {
+			vault: {
+				getMarkdownFiles: vi.fn(() => [a, b]),
+				process: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ links: [], frontmatterLinks: [], sections: [] })),
+				getFirstLinkpathDest: vi.fn(),
+			},
+		} as any;
+
+		const stats = await removeLinksInVault(
+			app,
+			makeSettings({ ignoredFolders: ["_archive"] }),
+		);
+		// Called for a.md only; b.md filtered. Both have no links so filesProcessed = 0.
+		expect(stats.filesProcessed).toBe(0);
 	});
 });

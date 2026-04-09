@@ -1,4 +1,4 @@
-import type { App, Editor, TFile } from "obsidian";
+import { type App, type Editor, TFile, type TFolder, Vault } from "obsidian";
 import {
 	decideRemove,
 	type RemoveInput,
@@ -41,6 +41,19 @@ export interface RemoveOptions {
 	targetFile?: TFile;
 	/** Restrict to frontmatter links only (Properties UI path). */
 	frontmatterOnly?: boolean;
+}
+
+/** Is this an `.md` TFile? Tests instantiate `new TFile()` so the check works under mocks. */
+function isMarkdownFile(f: unknown): f is TFile {
+	return f instanceof TFile && f.extension === "md";
+}
+
+/** Is this file path under any ignored folder? (Prefix-matched.) */
+function isIgnored(filePath: string, ignoredFolders: string[]): boolean {
+	for (const folder of ignoredFolders) {
+		if (filePath.startsWith(folder + "/") || filePath === folder) return true;
+	}
+	return false;
 }
 
 function runRemoveDecision(
@@ -254,4 +267,135 @@ export function removeLinksInFile(
 
 	const updated = applyChangesInEditor(editor, changes);
 	return { updated, skipped };
+}
+
+/** Plan + apply remove against a closed file via vault.process(). */
+async function removeLinksInClosedFile(
+	app: App,
+	file: TFile,
+	settings: YesAliasesSettings,
+): Promise<{ applied: number; skipped: number }> {
+	const cache = app.metadataCache.getFileCache(file);
+	if (!cache) return { applied: 0, skipped: 0 };
+
+	// Collect decisions from metadata.
+	const bodyPlanned: PlannedChange[] = [];
+	const fmPlanned: Array<{ original: string; newText: string }> = [];
+	let skipped = 0;
+
+	if (cache.links) {
+		const excludedRanges = buildExcludedRanges(cache.sections);
+		for (const link of cache.links) {
+			// content="" — inline-code detection happens at apply time against real content.
+			if (isLinkExcluded(link, "", excludedRanges, settings)) continue;
+			const linkpath = getLinkpathForResolution(link);
+			const { aliases } = resolveTargetAliases(app, linkpath, file.path);
+			const decision = runRemoveDecision(link.original, aliases, settings);
+			if (decision.action === "skip") {
+				if (decision.reason !== "already-correct") skipped++;
+				continue;
+			}
+			bodyPlanned.push({
+				from: link.position.start.offset,
+				to: link.position.end.offset,
+				original: link.original,
+				newText: decision.newText,
+			});
+		}
+	}
+
+	if (
+		settings.updateFrontmatterLinks &&
+		cache.frontmatterLinks &&
+		cache.frontmatterLinks.length > 0
+	) {
+		for (const link of cache.frontmatterLinks) {
+			const linkpath = getLinkpathFromFrontmatterLink(link);
+			const { aliases } = resolveTargetAliases(app, linkpath, file.path);
+			const decision = runRemoveDecision(link.original, aliases, settings);
+			if (decision.action === "skip") {
+				if (decision.reason !== "already-correct") skipped++;
+				continue;
+			}
+			fmPlanned.push({ original: link.original, newText: decision.newText });
+		}
+	}
+
+	if (bodyPlanned.length === 0 && fmPlanned.length === 0) {
+		return { applied: 0, skipped };
+	}
+
+	// Resolve frontmatter offsets against current file content — only when needed.
+	const fmChanges: PlannedChange[] = [];
+	if (fmPlanned.length > 0) {
+		const yamlRange = getYamlSectionRange(cache.sections);
+		if (yamlRange) {
+			const content = await app.vault.read(file);
+			const searchFrom = new Map<string, number>();
+			for (const fm of fmPlanned) {
+				const startFrom = searchFrom.get(fm.original) ?? yamlRange.start;
+				const offset = findFrontmatterLinkOffset(content, fm.original, startFrom, yamlRange.end);
+				if (!offset) continue;
+				searchFrom.set(fm.original, offset.end);
+				fmChanges.push({
+					from: offset.start,
+					to: offset.end,
+					original: fm.original,
+					newText: fm.newText,
+				});
+			}
+		}
+	}
+
+	const applied = await applyChangesInVault(app, file, [...bodyPlanned, ...fmChanges]);
+	return { applied, skipped };
+}
+
+/** Remove link aliases from every markdown file in the folder. */
+export async function removeLinksInFolder(
+	app: App,
+	folder: TFolder,
+	settings: YesAliasesSettings,
+): Promise<RemoveBulkStats> {
+	const files: TFile[] = [];
+	Vault.recurseChildren(folder, (child) => {
+		if (isMarkdownFile(child) && !isIgnored(child.path, settings.ignoredFolders)) {
+			files.push(child);
+		}
+	});
+	return executeRemoveBulk(app, files, settings);
+}
+
+/** Remove link aliases across every markdown file in the vault. */
+export async function removeLinksInVault(
+	app: App,
+	settings: YesAliasesSettings,
+): Promise<RemoveBulkStats> {
+	const files = app.vault
+		.getMarkdownFiles()
+		.filter((f) => !isIgnored(f.path, settings.ignoredFolders));
+	return executeRemoveBulk(app, files, settings);
+}
+
+async function executeRemoveBulk(
+	app: App,
+	files: TFile[],
+	settings: YesAliasesSettings,
+): Promise<RemoveBulkStats> {
+	const aggregate: RemoveBulkStats = { filesProcessed: 0, updated: 0, skipped: 0 };
+	const YIELD_INTERVAL = 50;
+	let count = 0;
+	for (const file of files) {
+		const { applied, skipped } = await removeLinksInClosedFile(app, file, settings);
+		if (applied > 0) {
+			aggregate.filesProcessed++;
+			aggregate.updated += applied;
+		}
+		aggregate.skipped += skipped;
+		count++;
+		if (count % YIELD_INTERVAL === 0) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+	}
+	return aggregate;
 }
