@@ -53,3 +53,14 @@ export function resolveAlias(
 
 	return { targetFile, alias: firstAlias };
 }
+
+/**
+ * Get the full aliases array for a file. Returns [] when no frontmatter,
+ * no aliases key, or a broken file. Handles both `aliases` (plural) and
+ * `alias` (singular) keys via extractAliases.
+ */
+export function getAllAliases(app: App, file: TFile): string[] {
+	const cache = app.metadataCache.getFileCache(file);
+	if (!cache?.frontmatter) return [];
+	return extractAliases(cache.frontmatter) ?? [];
+}
