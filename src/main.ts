@@ -636,6 +636,49 @@ export default class YesAliasesPlugin extends Plugin {
 							}
 						});
 				});
+
+				menu.addItem((item) => {
+					item.setTitle("Propagate aliases for files in folder")
+						.setIcon("links-going-out")
+						.onClick(async () => {
+							const stats = await propagateFolder(
+								this.app,
+								abstractFile,
+								this.settings,
+								{
+									source: "manual",
+									onBeforeWrite: (p) =>
+										this.autoPropagate?.recordWrite(p),
+								},
+							);
+							this.reportPropagateStats(
+								stats,
+								"manual",
+								`Propagated aliases in ${abstractFile.name}`,
+							);
+						});
+				});
+
+				menu.addItem((item) => {
+					item.setTitle("Remove link aliases in folder")
+						.setIcon("unlink")
+						.onClick(async () => {
+							const stats = await removeLinksInFolder(
+								this.app,
+								abstractFile,
+								this.settings,
+							);
+							if (stats.updated === 0) {
+								new Notice(
+									`No link aliases to remove in ${abstractFile.name}`,
+								);
+							} else {
+								new Notice(
+									`${stats.filesProcessed} files — ${stats.updated} link aliases removed, ${stats.skipped} skipped`,
+								);
+							}
+						});
+				});
 			}),
 		);
 	}
