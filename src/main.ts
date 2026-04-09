@@ -418,6 +418,20 @@ export default class YesAliasesPlugin extends Plugin {
 							new Notice(result.message);
 						});
 				});
+
+				menu.addItem((item) => {
+					item.setTitle("Remove link alias")
+						.setIcon("unlink")
+						.onClick(() => {
+							const result = removeLinkUnderCursor(
+								this.app,
+								editor,
+								file,
+								this.settings,
+							);
+							new Notice(result.message);
+						});
+				});
 			}),
 		);
 
@@ -540,6 +554,58 @@ export default class YesAliasesPlugin extends Plugin {
 							} else {
 								new Notice(
 									`${stats.updated} link${stats.updated > 1 ? "s" : ""} updated: ${alias}`,
+								);
+							}
+						});
+				});
+
+				menu.addItem((item) => {
+					item.setTitle("Remove link alias")
+						.setIcon("unlink")
+						.onClick(() => {
+							const editor = view.editor;
+							if (!editor) return;
+
+							// Same geometric disambiguation as update.
+							const coords = this.lastContextmenuCoords;
+							const cm = (editor as unknown as {
+								cm?: { contentDOM?: HTMLElement };
+							}).cm;
+							const contentRect =
+								cm?.contentDOM?.getBoundingClientRect();
+							const clickedInEditor =
+								coords != null &&
+								contentRect != null &&
+								coords.x >= contentRect.left &&
+								coords.x <= contentRect.right &&
+								coords.y >= contentRect.top &&
+								coords.y <= contentRect.bottom;
+
+							if (clickedInEditor) {
+								const result = removeLinkUnderCursor(
+									this.app,
+									editor,
+									sourceFile,
+									this.settings,
+								);
+								new Notice(result.message);
+								return;
+							}
+
+							// Properties UI path — inherits all-FM-links-to-target limitation.
+							editor.focus();
+							const stats = removeLinksInFile(
+								this.app,
+								editor,
+								sourceFile,
+								this.settings,
+								{ targetFile, frontmatterOnly: true },
+							);
+							if (stats.updated === 0) {
+								new Notice("No link aliases to remove");
+							} else {
+								new Notice(
+									`${stats.updated} link alias${stats.updated === 1 ? "" : "es"} removed`,
 								);
 							}
 						});
