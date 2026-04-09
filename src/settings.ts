@@ -3,18 +3,45 @@ import type YesAliasesPlugin from "./main";
 
 /** Configuration options for the Yes Aliases plugin. */
 export interface YesAliasesSettings {
+	// Existing
 	/** When true, replace existing display text with the alias. When false, skip links that already have display text. */
 	overwriteExisting: boolean;
 	/** When true, wikilinks inside frontmatter properties are included in alias updates. When false, only body links are updated. */
 	updateFrontmatterLinks: boolean;
 	/** Folder paths (relative to vault root) excluded from folder and vault-wide operations. Prefix-matched. */
 	ignoredFolders: string[];
+
+	// New in v0.1.0
+	/** When true, heading and block anchors ([[Note#H]], [[Note#^id]]) are excluded from alias rewriting. */
+	preserveHeadingAndBlockAnchors: boolean;
+	/** When true, alias matching ignores letter case and rewrites normalize to canonical casing. */
+	caseInsensitiveAliasMatch: boolean;
+	/** When true, links to a newly-created note get auto-updated when the note gets its first alias. */
+	autoPropagateNewNoteAliases: boolean;
+	/** When true, any alias change to any note auto-propagates to backlinks vault-wide. */
+	autoPropagateAllAliasChanges: boolean;
+	/** Auto-propagation only shows a notice when affected file count exceeds this threshold (0 = always notify). */
+	autoPropagateNoticeThreshold: number;
+	/** Compress aliases to this many leading entries. The "to main" command always trims to 1 regardless. */
+	aliasesKeepCount: number;
+	/** When true, compress shows a confirmation modal instead of refusing when orphaned links exist. */
+	compressWarnInsteadOfBlock: boolean;
+	/** When true, remove strips display text from every link, including custom prose. ⚠ destructive. */
+	removeIgnoresPropagationSafety: boolean;
 }
 
 export const DEFAULT_SETTINGS: YesAliasesSettings = {
 	overwriteExisting: false,
 	updateFrontmatterLinks: true,
 	ignoredFolders: [],
+	preserveHeadingAndBlockAnchors: false,
+	caseInsensitiveAliasMatch: false,
+	autoPropagateNewNoteAliases: true,
+	autoPropagateAllAliasChanges: false,
+	autoPropagateNoticeThreshold: 5,
+	aliasesKeepCount: 1,
+	compressWarnInsteadOfBlock: false,
+	removeIgnoresPropagationSafety: false,
 };
 
 /** Settings tab for the Yes Aliases plugin. */
