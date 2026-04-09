@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+	decidePropagate,
+	decideRemove,
 	decideRewrite,
 	extractLinkPath,
 	isCanonicalAlias,
 	isAliasMatch,
 	type LinkInput,
+	type PropagateInput,
+	type RemoveInput,
 } from "../src/pipeline";
 
 function makeInput(overrides: Partial<LinkInput> = {}): LinkInput {
@@ -204,5 +208,200 @@ describe("isAliasMatch", () => {
 
 	it("matches case-insensitively when flag is true", () => {
 		expect(isAliasMatch("JANE", ["Jane Smith", "Jane"], true)).toBe(true);
+	});
+});
+
+function makePropagateInput(overrides: Partial<PropagateInput> = {}): PropagateInput {
+	return {
+		original: "[[some-file|Jane]]",
+		hasExplicitDisplayText: true,
+		currentDisplayText: "Jane",
+		aliases: ["Jane Smith", "Jane"],
+		caseInsensitive: false,
+		...overrides,
+	};
+}
+
+describe("decidePropagate", () => {
+	it("rewrites a historical-alias display text to aliases[0]", () => {
+		expect(decidePropagate(makePropagateInput())).toEqual({
+			action: "rewrite",
+			newText: "[[some-file|Jane Smith]]",
+		});
+	});
+
+	it("skips when display text already equals canonical", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file|Jane Smith]]",
+				currentDisplayText: "Jane Smith",
+			}),
+		);
+		expect(result).toEqual({ action: "skip", reason: "already-correct" });
+	});
+
+	it("skips when display text is prose (no alias match)", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file|click here]]",
+				currentDisplayText: "click here",
+			}),
+		);
+		expect(result).toEqual({ action: "skip", reason: "has-display-text" });
+	});
+
+	it("skips when target has no aliases", () => {
+		const result = decidePropagate(makePropagateInput({ aliases: [] }));
+		expect(result).toEqual({ action: "skip", reason: "no-alias" });
+	});
+
+	it("skips when canonical is empty string", () => {
+		const result = decidePropagate(makePropagateInput({ aliases: ["", "Jane"] }));
+		expect(result).toEqual({ action: "skip", reason: "no-alias" });
+	});
+
+	it("rewrites bare link `[[some-file]]` to `[[some-file|Jane Smith]]`", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file]]",
+				hasExplicitDisplayText: false,
+				currentDisplayText: null,
+			}),
+		);
+		expect(result).toEqual({
+			action: "rewrite",
+			newText: "[[some-file|Jane Smith]]",
+		});
+	});
+
+	it("preserves heading anchor on rewrite", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file#Heading|Jane]]",
+			}),
+		);
+		expect(result).toEqual({
+			action: "rewrite",
+			newText: "[[some-file#Heading|Jane Smith]]",
+		});
+	});
+
+	it("preserves block-ref anchor on rewrite", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file#^abc|Jane]]",
+			}),
+		);
+		expect(result).toEqual({
+			action: "rewrite",
+			newText: "[[some-file#^abc|Jane Smith]]",
+		});
+	});
+
+	it("rewrites case-insensitively to canonical casing", () => {
+		const result = decidePropagate(
+			makePropagateInput({
+				original: "[[some-file|jane smith]]",
+				currentDisplayText: "jane smith",
+				caseInsensitive: true,
+			}),
+		);
+		expect(result).toEqual({
+			action: "rewrite",
+			newText: "[[some-file|Jane Smith]]",
+		});
+	});
+});
+
+function makeRemoveInput(overrides: Partial<RemoveInput> = {}): RemoveInput {
+	return {
+		original: "[[some-file|Jane]]",
+		hasExplicitDisplayText: true,
+		currentDisplayText: "Jane",
+		aliases: ["Jane Smith", "Jane"],
+		caseInsensitive: false,
+		aggressive: false,
+		...overrides,
+	};
+}
+
+describe("decideRemove", () => {
+	it("strips display text matching a historical alias in safe mode", () => {
+		expect(decideRemove(makeRemoveInput())).toEqual({
+			action: "rewrite",
+			newText: "[[some-file]]",
+		});
+	});
+
+	it("strips display text matching canonical in safe mode", () => {
+		expect(
+			decideRemove(
+				makeRemoveInput({
+					original: "[[some-file|Jane Smith]]",
+					currentDisplayText: "Jane Smith",
+				}),
+			),
+		).toEqual({ action: "rewrite", newText: "[[some-file]]" });
+	});
+
+	it("skips prose display text in safe mode", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file|click here]]",
+				currentDisplayText: "click here",
+			}),
+		);
+		expect(result).toEqual({ action: "skip", reason: "has-display-text" });
+	});
+
+	it("strips prose display text in aggressive mode", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file|click here]]",
+				currentDisplayText: "click here",
+				aggressive: true,
+			}),
+		);
+		expect(result).toEqual({ action: "rewrite", newText: "[[some-file]]" });
+	});
+
+	it("skips link with no display text", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file]]",
+				hasExplicitDisplayText: false,
+				currentDisplayText: null,
+			}),
+		);
+		expect(result).toEqual({ action: "skip", reason: "already-correct" });
+	});
+
+	it("preserves heading anchor on strip", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file#Heading|Jane]]",
+			}),
+		);
+		expect(result).toEqual({ action: "rewrite", newText: "[[some-file#Heading]]" });
+	});
+
+	it("preserves block anchor on strip", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file#^abc|Jane]]",
+			}),
+		);
+		expect(result).toEqual({ action: "rewrite", newText: "[[some-file#^abc]]" });
+	});
+
+	it("safe mode with case-insensitive matches historical alias", () => {
+		const result = decideRemove(
+			makeRemoveInput({
+				original: "[[some-file|JANE]]",
+				currentDisplayText: "JANE",
+				caseInsensitive: true,
+			}),
+		);
+		expect(result).toEqual({ action: "rewrite", newText: "[[some-file]]" });
 	});
 });

@@ -97,3 +97,111 @@ export function isAliasMatch(
 	}
 	return aliases.some((a) => a !== "" && a === displayText);
 }
+
+/** Input to the propagate decision function. */
+export interface PropagateInput {
+	/** Raw wikilink text, e.g. "[[file#heading|Old Alias]]" or "![[file|Old]]" */
+	original: string;
+	/** Whether the original contains an explicit "|" separator */
+	hasExplicitDisplayText: boolean;
+	/** Current display text if present, else null */
+	currentDisplayText: string | null;
+	/** Full aliases array from the target file (may be empty) */
+	aliases: string[];
+	/** Match case-insensitively? */
+	caseInsensitive: boolean;
+}
+
+/** Input to the remove decision function. */
+export interface RemoveInput {
+	/** Raw wikilink text */
+	original: string;
+	/** Whether the original contains an explicit "|" separator */
+	hasExplicitDisplayText: boolean;
+	/** Current display text if present, else null */
+	currentDisplayText: string | null;
+	/** Full aliases array from the target file (may be empty) */
+	aliases: string[];
+	/** Match case-insensitively? */
+	caseInsensitive: boolean;
+	/** Aggressive mode strips regardless of alias match */
+	aggressive: boolean;
+}
+
+/**
+ * Decide whether to propagate a target's canonical alias into this backlink.
+ *
+ * Eligibility: display text is a known alias of the target (canonical or
+ * historical) AND is not already the canonical form. Prose display text
+ * is never touched (safe-rewrite rule).
+ *
+ * Bare links `[[file]]` are rewritten to `[[file|aliases[0]]]` when a
+ * canonical alias exists — propagation treats "no display text" as
+ * implicitly eligible for the canonical alias.
+ *
+ * Anchors are preserved via extractLinkPath.
+ */
+export function decidePropagate(input: PropagateInput): RewriteDecision {
+	const canonical = input.aliases[0];
+	if (canonical === undefined || canonical === "") {
+		return { action: "skip", reason: "no-alias" };
+	}
+
+	// Bare link — rewrite to canonical.
+	if (!input.hasExplicitDisplayText || input.currentDisplayText === null) {
+		const linkPath = extractLinkPath(input.original);
+		const prefix = input.original.startsWith("!") ? "!" : "";
+		return {
+			action: "rewrite",
+			newText: `${prefix}[[${linkPath}|${canonical}]]`,
+		};
+	}
+
+	// Strict equality with canonical — even in case-insensitive mode, a casing
+	// mismatch must rewrite so the display normalizes to canonical casing.
+	if (input.currentDisplayText === canonical) {
+		return { action: "skip", reason: "already-correct" };
+	}
+
+	if (!isAliasMatch(input.currentDisplayText, input.aliases, input.caseInsensitive)) {
+		// Prose — safe-rewrite rule preserves it.
+		return { action: "skip", reason: "has-display-text" };
+	}
+
+	const linkPath = extractLinkPath(input.original);
+	const prefix = input.original.startsWith("!") ? "!" : "";
+	return {
+		action: "rewrite",
+		newText: `${prefix}[[${linkPath}|${canonical}]]`,
+	};
+}
+
+/**
+ * Decide whether to strip a link's display text.
+ *
+ * Safe mode: only strip if display text matches some alias entry.
+ * Aggressive mode: strip any explicit display text regardless of match.
+ *
+ * Bare links (no display text) are skipped as "already-correct" — nothing
+ * to remove.
+ *
+ * Anchors are preserved via extractLinkPath.
+ */
+export function decideRemove(input: RemoveInput): RewriteDecision {
+	if (!input.hasExplicitDisplayText || input.currentDisplayText === null) {
+		return { action: "skip", reason: "already-correct" };
+	}
+
+	if (!input.aggressive) {
+		if (!isAliasMatch(input.currentDisplayText, input.aliases, input.caseInsensitive)) {
+			return { action: "skip", reason: "has-display-text" };
+		}
+	}
+
+	const linkPath = extractLinkPath(input.original);
+	const prefix = input.original.startsWith("!") ? "!" : "";
+	return {
+		action: "rewrite",
+		newText: `${prefix}[[${linkPath}]]`,
+	};
+}
