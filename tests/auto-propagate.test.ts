@@ -43,14 +43,21 @@ function makePlugin(settings: YesAliasesSettings): {
 	plugin: MockHost;
 	registerEvent: ReturnType<typeof vi.fn>;
 	registerInterval: ReturnType<typeof vi.fn>;
+	triggerLayoutReady: () => void;
 } {
 	const registerEvent = vi.fn();
 	const registerInterval = vi.fn();
+	let layoutReadyCb: (() => void) | null = null;
 	const app = {
 		vault: { on: vi.fn(() => ({})) },
 		metadataCache: {
 			on: vi.fn(() => ({})),
 			getFileCache: vi.fn(() => null),
+		},
+		workspace: {
+			onLayoutReady: vi.fn((cb: () => void) => {
+				layoutReadyCb = cb;
+			}),
 		},
 	} as any;
 	const plugin: MockHost = {
@@ -60,7 +67,10 @@ function makePlugin(settings: YesAliasesSettings): {
 		registerInterval,
 		propagate: vi.fn(),
 	};
-	return { plugin, registerEvent, registerInterval };
+	const triggerLayoutReady = () => {
+		if (layoutReadyCb) layoutReadyCb();
+	};
+	return { plugin, registerEvent, registerInterval, triggerLayoutReady };
 }
 
 beforeEach(() => {
@@ -74,14 +84,43 @@ afterEach(() => {
 
 describe("AutoPropagationManager lifecycle", () => {
 	it("start() registers vault + metadataCache events and the 60s interval", () => {
-		const { plugin, registerEvent, registerInterval } = makePlugin(
-			makeSettings(),
-		);
+		const { plugin, registerEvent, registerInterval, triggerLayoutReady } =
+			makePlugin(makeSettings());
 		const mgr = new AutoPropagationManager(plugin);
 		mgr.start();
-		// 4 events: vault create, delete, rename, metadataCache changed.
-		expect(registerEvent).toHaveBeenCalledTimes(4);
+		// 3 immediate events: vault delete, rename, metadataCache changed.
+		// vault create is deferred until layout-ready.
+		expect(registerEvent).toHaveBeenCalledTimes(3);
 		expect(registerInterval).toHaveBeenCalledTimes(1);
+		triggerLayoutReady();
+		// After layout-ready: vault create is now registered.
+		expect(registerEvent).toHaveBeenCalledTimes(4);
+	});
+
+	it("start() defers vault create registration until layout-ready to avoid initial-index pollution", () => {
+		const { plugin, triggerLayoutReady } = makePlugin(makeSettings());
+		const mgr = new AutoPropagationManager(plugin);
+		mgr.start();
+
+		// Before layout-ready: onCreate should not be wired up.
+		// Directly calling onCreate to simulate what would happen if
+		// vault.on('create') fired during initial index scan.
+		const file = makeTFile("existing.md");
+		(mgr as any).onCreate(file);
+		// onCreate itself still adds to recentlyCreated — the protection
+		// is that the event listener isn't registered yet, so Obsidian's
+		// initial-index create events never reach onCreate.
+		// We verify the event registration count instead.
+		expect(plugin.app.vault.on).not.toHaveBeenCalledWith(
+			"create",
+			expect.any(Function),
+		);
+
+		triggerLayoutReady();
+		expect(plugin.app.vault.on).toHaveBeenCalledWith(
+			"create",
+			expect.any(Function),
+		);
 	});
 
 	it("stop() clears all internal maps and debounce timers", () => {

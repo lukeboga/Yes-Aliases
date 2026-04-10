@@ -61,9 +61,19 @@ export class AutoPropagationManager {
 	start(): void {
 		const { app } = this.plugin;
 
-		this.plugin.registerEvent(
-			app.vault.on("create", (file: TAbstractFile) => this.onCreate(file)),
-		);
+		// Defer create-event registration until after Obsidian's initial vault
+		// index has finished firing 'create' events for every existing file.
+		// Without this gate, recentlyCreated is polluted with all pre-existing
+		// files at plugin load, causing autoPropagateNewNoteAliases to treat
+		// existing notes as if they were freshly created.
+		app.workspace.onLayoutReady(() => {
+			this.plugin.registerEvent(
+				app.vault.on("create", (file: TAbstractFile) =>
+					this.onCreate(file),
+				),
+			);
+		});
+
 		this.plugin.registerEvent(
 			app.vault.on("delete", (file: TAbstractFile) => this.onDelete(file)),
 		);
