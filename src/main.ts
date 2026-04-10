@@ -17,11 +17,11 @@ import {
 	updateLinksInVault,
 } from "./vault-writer";
 import {
-	propagateFile,
-	propagateFolder,
-	propagateVault,
-	type PropagateStats,
-} from "./propagate";
+	pushFile,
+	pushFolder,
+	pushVault,
+	type PushStats,
+} from "./push";
 import {
 	removeLinkUnderCursor,
 	removeLinksInFile,
@@ -30,11 +30,11 @@ import {
 } from "./remove-driver";
 import { applyCompress, planCompressOutcome } from "./compress";
 import { CompressConfirmModal } from "./compress-modal";
-import { AutoPropagationManager } from "./auto-propagate";
+import { AutoPushManager } from "./auto-push";
 
 export default class YesAliasesPlugin extends Plugin {
 	settings!: YesAliasesSettings;
-	private autoPropagate: AutoPropagationManager | null = null;
+	private autoPush: AutoPushManager | null = null;
 	/**
 	 * Coordinates of the most recent contextmenu event. Used by the
 	 * editor-menu handler to find the actual clicked position via
@@ -56,13 +56,13 @@ export default class YesAliasesPlugin extends Plugin {
 		);
 		this.registerCommands();
 		this.registerContextMenus();
-		this.autoPropagate = new AutoPropagationManager(this);
-		this.autoPropagate.start();
+		this.autoPush = new AutoPushManager(this);
+		this.autoPush.start();
 	}
 
 	onunload(): void {
-		this.autoPropagate?.stop();
-		this.autoPropagate = null;
+		this.autoPush?.stop();
+		this.autoPush = null;
 	}
 
 	async loadSettings(): Promise<void> {
@@ -77,16 +77,16 @@ export default class YesAliasesPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	/** Auto-propagation entry point called by AutoPropagationManager. */
-	async propagate(file: TFile, source: "auto" | "manual"): Promise<void> {
-		const stats = await propagateFile(this.app, file, this.settings, {
+	/** Auto-push entry point called by AutoPushManager. */
+	async push(file: TFile, source: "auto" | "manual"): Promise<void> {
+		const stats = await pushFile(this.app, file, this.settings, {
 			source,
-			onBeforeWrite: (path) => this.autoPropagate?.recordWrite(path),
+			onBeforeWrite: (path) => this.autoPush?.recordWrite(path),
 		});
-		this.reportPropagateStats(
+		this.reportPushStats(
 			stats,
 			source,
-			`Propagated aliases from ${file.basename}`,
+			`Pushed aliases from ${file.basename}`,
 		);
 	}
 
@@ -104,7 +104,7 @@ export default class YesAliasesPlugin extends Plugin {
 			case "refuse": {
 				const { orphans, affectedSourcePaths } = outcome.result;
 				new Notice(
-					`Cannot compress aliases — ${orphans.length} link${orphans.length === 1 ? "" : "s"} across ${affectedSourcePaths.size} file${affectedSourcePaths.size === 1 ? "" : "s"} still show alias entries that would be removed. Run "Propagate aliases across vault" first, or enable "Warn instead of blocking" in settings.`,
+					`Cannot compress aliases — ${orphans.length} link${orphans.length === 1 ? "" : "s"} across ${affectedSourcePaths.size} file${affectedSourcePaths.size === 1 ? "" : "s"} still ${orphans.length === 1 ? "shows" : "show"} alias entries that would be removed. Run "Push aliases in vault" first, or enable "Warn instead of blocking" in settings.`,
 				);
 				return;
 			}
@@ -140,15 +140,15 @@ export default class YesAliasesPlugin extends Plugin {
 		}
 	}
 
-	private reportPropagateStats(
-		stats: PropagateStats,
+	private reportPushStats(
+		stats: PushStats,
 		source: "auto" | "manual",
 		prefix: string,
 	): void {
 		// Per §15 resolution 5: threshold applies to auto only.
 		if (
 			source === "auto" &&
-			stats.filesTouched <= this.settings.autoPropagateNoticeThreshold
+			stats.filesTouched <= this.settings.autoPushNoticeThreshold
 		) {
 			return;
 		}
@@ -164,7 +164,7 @@ export default class YesAliasesPlugin extends Plugin {
 	private registerCommands(): void {
 		this.addCommand({
 			id: "update-link-under-cursor",
-			name: "Update link under cursor",
+			name: "Update link alias at cursor",
 			editorCallback: (editor, view) => {
 				const file = view.file;
 				if (!file) return;
@@ -180,7 +180,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "update-links-in-file",
-			name: "Update all links in current file",
+			name: "Update link aliases in file",
 			editorCallback: async (editor, view) => {
 				const file = view.file;
 				if (!file) return;
@@ -202,7 +202,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "update-links-in-vault",
-			name: "Update all links in vault",
+			name: "Update link aliases in vault",
 			callback: async () => {
 				const stats = await updateLinksInVault(
 					this.app,
@@ -212,7 +212,7 @@ export default class YesAliasesPlugin extends Plugin {
 					new Notice("No links to update in vault");
 				} else {
 					new Notice(
-						`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
+						`${stats.filesProcessed} file${stats.filesProcessed === 1 ? "" : "s"} — ${stats.updated} link${stats.updated === 1 ? "" : "s"} updated, ${stats.skipped} skipped`,
 					);
 				}
 			},
@@ -220,7 +220,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "remove-link-alias-under-cursor",
-			name: "Remove link alias under cursor",
+			name: "Remove link alias at cursor",
 			editorCallback: (editor, view) => {
 				const file = view.file;
 				if (!file) return;
@@ -236,7 +236,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "remove-link-aliases-in-file",
-			name: "Remove link aliases in current file",
+			name: "Remove link aliases in file",
 			editorCallback: async (editor, view) => {
 				const file = view.file;
 				if (!file) return;
@@ -258,14 +258,14 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "remove-link-aliases-in-vault",
-			name: "Remove link aliases across vault",
+			name: "Remove link aliases in vault",
 			callback: async () => {
 				const stats = await removeLinksInVault(this.app, this.settings);
 				if (stats.updated === 0) {
 					new Notice("No link aliases to remove in vault");
 				} else {
 					new Notice(
-						`${stats.filesProcessed} files — ${stats.updated} link aliases removed, ${stats.skipped} skipped`,
+						`${stats.filesProcessed} file${stats.filesProcessed === 1 ? "" : "s"} — ${stats.updated} link alias${stats.updated === 1 ? "" : "es"} removed, ${stats.skipped} skipped`,
 					);
 				}
 			},
@@ -273,7 +273,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "compress-aliases-file",
-			name: "Compress aliases in current file",
+			name: "Compress aliases in file",
 			callback: async () => {
 				const file = this.app.workspace.getActiveFile();
 				if (!file) {
@@ -286,7 +286,7 @@ export default class YesAliasesPlugin extends Plugin {
 
 		this.addCommand({
 			id: "compress-aliases-file-to-main",
-			name: "Compress aliases to main alias",
+			name: "Compress to main alias",
 			callback: async () => {
 				const file = this.app.workspace.getActiveFile();
 				if (!file) {
@@ -298,37 +298,37 @@ export default class YesAliasesPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "propagate-aliases-file",
-			name: "Propagate aliases for current file",
+			id: "push-aliases-file",
+			name: "Push aliases from file",
 			callback: async () => {
 				const file = this.app.workspace.getActiveFile();
 				if (!file) {
 					new Notice("No active file");
 					return;
 				}
-				await this.propagate(file, "manual");
+				await this.push(file, "manual");
 			},
 		});
 
 		this.addCommand({
-			id: "propagate-aliases-vault",
-			name: "Propagate aliases across vault",
+			id: "push-aliases-vault",
+			name: "Push aliases in vault",
 			callback: async () => {
-				const stats = await propagateVault(this.app, this.settings, {
+				const stats = await pushVault(this.app, this.settings, {
 					source: "manual",
-					onBeforeWrite: (p) => this.autoPropagate?.recordWrite(p),
+					onBeforeWrite: (p) => this.autoPush?.recordWrite(p),
 				});
-				this.reportPropagateStats(
+				this.reportPushStats(
 					stats,
 					"manual",
-					"Propagated aliases across vault",
+					"Pushed aliases in vault",
 				);
 			},
 		});
 
 		this.addCommand({
 			id: "update-links-in-folder",
-			name: "Update all links in current folder",
+			name: "Update link aliases in folder",
 			callback: async () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile?.parent) {
@@ -347,7 +347,7 @@ export default class YesAliasesPlugin extends Plugin {
 					);
 				} else {
 					new Notice(
-						`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
+						`${stats.filesProcessed} file${stats.filesProcessed === 1 ? "" : "s"} — ${stats.updated} link${stats.updated === 1 ? "" : "s"} updated, ${stats.skipped} skipped`,
 					);
 				}
 			},
@@ -638,30 +638,30 @@ export default class YesAliasesPlugin extends Plugin {
 								);
 							} else {
 								new Notice(
-									`${stats.filesProcessed} files — ${stats.updated} links updated, ${stats.skipped} skipped`,
+									`${stats.filesProcessed} file${stats.filesProcessed === 1 ? "" : "s"} — ${stats.updated} link${stats.updated === 1 ? "" : "s"} updated, ${stats.skipped} skipped`,
 								);
 							}
 						});
 				});
 
 				menu.addItem((item) => {
-					item.setTitle("Propagate aliases for files in folder")
+					item.setTitle("Push aliases from folder")
 						.setIcon("links-going-out")
 						.onClick(async () => {
-							const stats = await propagateFolder(
+							const stats = await pushFolder(
 								this.app,
 								abstractFile,
 								this.settings,
 								{
 									source: "manual",
 									onBeforeWrite: (p) =>
-										this.autoPropagate?.recordWrite(p),
+										this.autoPush?.recordWrite(p),
 								},
 							);
-							this.reportPropagateStats(
+							this.reportPushStats(
 								stats,
 								"manual",
-								`Propagated aliases in ${abstractFile.name}`,
+								`Pushed aliases in ${abstractFile.name}`,
 							);
 						});
 				});
@@ -681,7 +681,7 @@ export default class YesAliasesPlugin extends Plugin {
 								);
 							} else {
 								new Notice(
-									`${stats.filesProcessed} files — ${stats.updated} link aliases removed, ${stats.skipped} skipped`,
+									`${stats.filesProcessed} file${stats.filesProcessed === 1 ? "" : "s"} — ${stats.updated} link alias${stats.updated === 1 ? "" : "es"} removed, ${stats.skipped} skipped`,
 								);
 							}
 						});

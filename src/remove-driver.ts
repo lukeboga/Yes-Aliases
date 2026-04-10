@@ -70,7 +70,7 @@ function runRemoveDecision(
 		currentDisplayText,
 		aliases,
 		caseInsensitive: settings.caseInsensitiveAliasMatch,
-		aggressive: settings.removeIgnoresPropagationSafety,
+		aggressive: settings.removeIgnoresPushSafety,
 	};
 	return decideRemove(input);
 }

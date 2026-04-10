@@ -7,8 +7,8 @@ import {
 	Vault,
 } from "obsidian";
 import {
-	decidePropagate,
-	type PropagateInput,
+	decidePush,
+	type PushInput,
 	type RewriteDecision,
 } from "./pipeline";
 import { getAllAliases } from "./alias-resolver";
@@ -24,8 +24,8 @@ import { applyChangesInEditor, type PlannedChange } from "./editor-writer";
 import { applyChangesInVault } from "./vault-writer";
 import type { YesAliasesSettings } from "./settings";
 
-/** Stats returned from a propagate operation. */
-export interface PropagateStats {
+/** Stats returned from a push operation. */
+export interface PushStats {
 	/** Number of target files processed (folder/vault scopes; always 1 for file scope). */
 	targetsProcessed: number;
 	/** Number of source files whose contents were modified. */
@@ -36,8 +36,8 @@ export interface PropagateStats {
 	skipped: number;
 }
 
-/** Source of the propagation call — governs notice suppression. */
-export interface PropagateOptions {
+/** Source of the push call — governs notice suppression. */
+export interface PushOptions {
 	source: "manual" | "auto";
 	/** Called before each file write so callers can seed the in-flight write tracker. */
 	onBeforeWrite?: (sourcePath: string) => void;
@@ -56,7 +56,7 @@ function isMarkdownFile(f: unknown): f is TFile {
 	return f instanceof TFile && f.extension === "md";
 }
 
-/** Run the propagate decision for a single link. */
+/** Run the push decision for a single link. */
 function decideForLink(
 	original: string,
 	aliases: string[],
@@ -65,17 +65,17 @@ function decideForLink(
 	const pipeIdx = original.indexOf("|");
 	const hasExplicit = pipeIdx !== -1;
 	const currentDisplayText = hasExplicit ? original.slice(pipeIdx + 1, -2) : null;
-	const input: PropagateInput = {
+	const input: PushInput = {
 		original,
 		hasExplicitDisplayText: hasExplicit,
 		currentDisplayText,
 		aliases,
 		caseInsensitive: settings.caseInsensitiveAliasMatch,
 	};
-	return decidePropagate(input);
+	return decidePush(input);
 }
 
-/** Plan body-link propagation changes for a single source file against a single target. */
+/** Plan body-link push changes for a single source file against a single target. */
 function planBodyChanges(
 	app: App,
 	targetFile: TFile,
@@ -151,14 +151,14 @@ function resolveFmOffsets(
 	return out;
 }
 
-/** Plan + apply propagation for one source file, dispatching to editor or vault path. */
-async function propagateSource(
+/** Plan + apply push for one source file, dispatching to editor or vault path. */
+async function pushSource(
 	app: App,
 	targetFile: TFile,
 	targetAliases: string[],
 	sourceFile: TFile,
 	settings: YesAliasesSettings,
-	options: PropagateOptions,
+	options: PushOptions,
 ): Promise<{ applied: number; skipped: number }> {
 	const cache = app.metadataCache.getFileCache(sourceFile);
 	const { changes: bodyChanges, skipped } = planBodyChanges(
@@ -235,19 +235,19 @@ async function propagateSource(
 }
 
 /**
- * Propagate a single target file's aliases to all its backlinks in the vault.
+ * Push a single target file's aliases to all its backlinks in the vault.
  *
  * Reverse-lookup via `metadataCache.resolvedLinks`, which is keyed as
  * `resolvedLinks[sourcePath] → { targetPath: count }`. We iterate all entries
  * to find sources linking to this target — sub-millisecond even on 10k vaults.
  */
-export async function propagateFile(
+export async function pushFile(
 	app: App,
 	targetFile: TFile,
 	settings: YesAliasesSettings,
-	options: PropagateOptions,
-): Promise<PropagateStats> {
-	const stats: PropagateStats = {
+	options: PushOptions,
+): Promise<PushStats> {
+	const stats: PushStats = {
 		targetsProcessed: 1,
 		filesTouched: 0,
 		linksRewritten: 0,
@@ -269,7 +269,7 @@ export async function propagateFile(
 		const sourceFile = app.vault.getAbstractFileByPath(sourcePath);
 		if (!isMarkdownFile(sourceFile)) continue;
 
-		const { applied, skipped } = await propagateSource(
+		const { applied, skipped } = await pushSource(
 			app,
 			targetFile,
 			targetAliases,
@@ -287,19 +287,19 @@ export async function propagateFile(
 	return stats;
 }
 
-/** Propagate aliases for every markdown file in a folder (recursive). */
-export async function propagateFolder(
+/** Push aliases for every markdown file in a folder (recursive). */
+export async function pushFolder(
 	app: App,
 	folder: TFolder,
 	settings: YesAliasesSettings,
-	options: PropagateOptions,
-): Promise<PropagateStats> {
+	options: PushOptions,
+): Promise<PushStats> {
 	const targets: TFile[] = [];
 	Vault.recurseChildren(folder, (child) => {
 		if (isMarkdownFile(child)) targets.push(child);
 	});
 
-	const aggregate: PropagateStats = {
+	const aggregate: PushStats = {
 		targetsProcessed: 0,
 		filesTouched: 0,
 		linksRewritten: 0,
@@ -307,7 +307,7 @@ export async function propagateFolder(
 	};
 
 	for (const target of targets) {
-		const s = await propagateFile(app, target, settings, options);
+		const s = await pushFile(app, target, settings, options);
 		aggregate.targetsProcessed += s.targetsProcessed;
 		aggregate.filesTouched += s.filesTouched;
 		aggregate.linksRewritten += s.linksRewritten;
@@ -318,24 +318,24 @@ export async function propagateFolder(
 }
 
 /**
- * Propagate aliases for every markdown file in the vault.
+ * Push aliases for every markdown file in the vault.
  *
  * Targets in ignoredFolders are SKIPPED ENTIRELY (§15 resolution 4) — users
- * who want a specific ignored file propagated must run the file-scope
- * command explicitly. Source iteration inside propagateFile already filters
+ * who want a specific ignored file pushed must run the file-scope
+ * command explicitly. Source iteration inside pushFile already filters
  * ignored folders, so ignored-folder source files are never touched either.
  *
  * Yields to the UI every 50 targets for large vaults.
  */
-export async function propagateVault(
+export async function pushVault(
 	app: App,
 	settings: YesAliasesSettings,
-	options: PropagateOptions,
-): Promise<PropagateStats> {
+	options: PushOptions,
+): Promise<PushStats> {
 	const allFiles = app.vault.getMarkdownFiles();
 	const targets = allFiles.filter((f) => !isIgnored(f.path, settings.ignoredFolders));
 
-	const aggregate: PropagateStats = {
+	const aggregate: PushStats = {
 		targetsProcessed: 0,
 		filesTouched: 0,
 		linksRewritten: 0,
@@ -345,7 +345,7 @@ export async function propagateVault(
 	const YIELD_INTERVAL = 50;
 	let count = 0;
 	for (const target of targets) {
-		const s = await propagateFile(app, target, settings, options);
+		const s = await pushFile(app, target, settings, options);
 		aggregate.targetsProcessed += s.targetsProcessed;
 		aggregate.filesTouched += s.filesTouched;
 		aggregate.linksRewritten += s.linksRewritten;

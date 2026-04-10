@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 /**
  * NFR-04b memory footprint regression test.
  *
- * The auto-propagation manager owns an in-memory `aliasSnapshot:
+ * The auto-push manager owns an in-memory `aliasSnapshot:
  * Map<string, string[]>` that holds last-observed aliases for every
  * markdown file in the vault. NFR-04b requires that this snapshot stays
  * under 1 MB serialized for a 10,000-note vault, where ~20% of notes

@@ -3,7 +3,7 @@
 	"name": "Yes Aliases",
 	"version": "0.1.0",
 	"minAppVersion": "1.0.0",
-	"description": "Complete alias lifecycle for wikilinks: pull, propagate, compress, remove. Scope levels: cursor, file, folder, vault.",
+	"description": "Manages wikilink display text from note aliases. Pull (update), push, compress, and remove across cursor, file, folder, and vault scopes.",
 	"author": "LBM",
 	"authorUrl": "https://github.com/lukeboga",
 	"isDesktopOnly": false

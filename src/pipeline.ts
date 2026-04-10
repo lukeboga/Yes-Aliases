@@ -79,7 +79,7 @@ export function isCanonicalAlias(
  * Is this display text a known alias (canonical OR historical)?
  *
  * Tests membership in the full aliases array. Used by the safe-rewrite
- * rule that both propagate and remove consume. Empty strings never match.
+ * rule that both push and remove consume. Empty strings never match.
  *
  * This predicate is deliberately distinct from isCanonicalAlias so the
  * privileged-set upgrade can change canonical logic without touching
@@ -98,8 +98,8 @@ export function isAliasMatch(
 	return aliases.some((a) => a !== "" && a === displayText);
 }
 
-/** Input to the propagate decision function. */
-export interface PropagateInput {
+/** Input to the push decision function. */
+export interface PushInput {
 	/** Raw wikilink text, e.g. "[[file#heading|Old Alias]]" or "![[file|Old]]" */
 	original: string;
 	/** Whether the original contains an explicit "|" separator */
@@ -129,19 +129,19 @@ export interface RemoveInput {
 }
 
 /**
- * Decide whether to propagate a target's canonical alias into this backlink.
+ * Decide whether to push a target's canonical alias into this backlink.
  *
  * Eligibility: display text is a known alias of the target (canonical or
  * historical) AND is not already the canonical form. Prose display text
  * is never touched (safe-rewrite rule).
  *
  * Bare links `[[file]]` are rewritten to `[[file|aliases[0]]]` when a
- * canonical alias exists — propagation treats "no display text" as
- * implicitly eligible for the canonical alias.
+ * canonical alias exists — push treats "no display text" as implicitly
+ * eligible for the canonical alias.
  *
  * Anchors are preserved via extractLinkPath.
  */
-export function decidePropagate(input: PropagateInput): RewriteDecision {
+export function decidePush(input: PushInput): RewriteDecision {
 	const canonical = input.aliases[0];
 	if (canonical === undefined || canonical === "") {
 		return { action: "skip", reason: "no-alias" };

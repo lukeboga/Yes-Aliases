@@ -17,17 +17,17 @@ export interface YesAliasesSettings {
 	/** When true, alias matching ignores letter case and rewrites normalize to canonical casing. */
 	caseInsensitiveAliasMatch: boolean;
 	/** When true, links to a newly-created note get auto-updated when the note gets its first alias. */
-	autoPropagateNewNoteAliases: boolean;
-	/** When true, any alias change to any note auto-propagates to backlinks vault-wide. */
-	autoPropagateAllAliasChanges: boolean;
-	/** Auto-propagation only shows a notice when affected file count exceeds this threshold (0 = always notify). */
-	autoPropagateNoticeThreshold: number;
+	autoPushNewNoteAliases: boolean;
+	/** When true, any alias change to any note auto-pushes to backlinks vault-wide. */
+	autoPushAllAliasChanges: boolean;
+	/** Auto-push only shows a notice when affected file count exceeds this threshold (0 = always notify). */
+	autoPushNoticeThreshold: number;
 	/** Compress aliases to this many leading entries. The "to main" command always trims to 1 regardless. */
 	aliasesKeepCount: number;
 	/** When true, compress shows a confirmation modal instead of refusing when orphaned links exist. */
 	compressWarnInsteadOfBlock: boolean;
 	/** When true, remove strips display text from every link, including custom prose. ⚠ destructive. */
-	removeIgnoresPropagationSafety: boolean;
+	removeIgnoresPushSafety: boolean;
 }
 
 export const DEFAULT_SETTINGS: YesAliasesSettings = {
@@ -36,12 +36,12 @@ export const DEFAULT_SETTINGS: YesAliasesSettings = {
 	ignoredFolders: [],
 	preserveHeadingAndBlockAnchors: false,
 	caseInsensitiveAliasMatch: false,
-	autoPropagateNewNoteAliases: true,
-	autoPropagateAllAliasChanges: false,
-	autoPropagateNoticeThreshold: 5,
+	autoPushNewNoteAliases: true,
+	autoPushAllAliasChanges: false,
+	autoPushNoticeThreshold: 5,
 	aliasesKeepCount: 1,
 	compressWarnInsteadOfBlock: false,
-	removeIgnoresPropagationSafety: false,
+	removeIgnoresPushSafety: false,
 };
 
 /** Settings tab for the Yes Aliases plugin. */
@@ -123,9 +123,9 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.autoPropagateNewNoteAliases)
+					.setValue(this.plugin.settings.autoPushNewNoteAliases)
 					.onChange(async (value) => {
-						this.plugin.settings.autoPropagateNewNoteAliases = value;
+						this.plugin.settings.autoPushNewNoteAliases = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -133,13 +133,13 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Auto-update links whenever any note's alias changes")
 			.setDesc(
-				"When you change a note's alias, links to that note in other notes are updated automatically to show the new alias. ⚠ This can touch many files at once. Leave off until you've tried the manual \"Propagate aliases\" commands first and are confident about the blast radius in your vault.",
+				"When you change a note's alias, links to that note in other notes are updated automatically to show the new alias. ⚠ This can touch many files at once. Leave off until you've tried the manual \"Push aliases\" commands first and are confident about the blast radius in your vault.",
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.autoPropagateAllAliasChanges)
+					.setValue(this.plugin.settings.autoPushAllAliasChanges)
 					.onChange(async (value) => {
-						this.plugin.settings.autoPropagateAllAliasChanges = value;
+						this.plugin.settings.autoPushAllAliasChanges = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -152,12 +152,12 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("5")
-					.setValue(String(this.plugin.settings.autoPropagateNoticeThreshold))
+					.setValue(String(this.plugin.settings.autoPushNoticeThreshold))
 					.onChange(
 						debounce(async (value: string) => {
 							const n = Number.parseInt(value, 10);
 							if (Number.isNaN(n) || n < 0) return;
-							this.plugin.settings.autoPropagateNoticeThreshold = n;
+							this.plugin.settings.autoPushNoticeThreshold = n;
 							await this.plugin.saveSettings();
 						}, 500, true),
 					),
@@ -169,7 +169,7 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Main aliases to keep")
 			.setDesc(
-				"When you run \"Compress aliases in current file\", this many leading entries of the aliases array are kept and the rest are removed. The \"Compress aliases to main alias\" command always trims to 1 regardless of this setting. Default: 1.",
+				"When you run \"Compress aliases in file\", this many leading entries of the aliases array are kept and the rest are removed. The \"Compress to main alias\" command always trims to 1 regardless of this setting. Default: 1.",
 			)
 			.addText((text) =>
 				text
@@ -188,7 +188,7 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Warn instead of blocking when compress would orphan links")
 			.setDesc(
-				"Compressing a note's aliases list removes entries beyond the keep count. If any link elsewhere in the vault still shows one of those removed aliases, the plugin normally refuses to compress and asks you to run \"Propagate aliases across vault\" first. When this is enabled, the plugin shows a warning dialog instead and lets you compress anyway. ⚠ Compressing with orphaned links strands those links: the plugin no longer recognizes the old display text as an alias of the target, so future updates won't fix it. Leave off unless you know what you're doing.",
+				"Compressing a note's aliases list removes entries beyond the keep count. If any link elsewhere in the vault still shows one of those removed aliases, the plugin normally refuses to compress and asks you to run \"Push aliases in vault\" first. When this is enabled, the plugin shows a warning dialog instead and lets you compress anyway. ⚠ Compressing with orphaned links strands those links: the plugin no longer recognizes the old display text as an alias of the target, so future updates won't fix it. Leave off unless you know what you're doing.",
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -209,9 +209,9 @@ export class YesAliasesSettingTab extends PluginSettingTab {
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.removeIgnoresPropagationSafety)
+					.setValue(this.plugin.settings.removeIgnoresPushSafety)
 					.onChange(async (value) => {
-						this.plugin.settings.removeIgnoresPropagationSafety = value;
+						this.plugin.settings.removeIgnoresPushSafety = value;
 						await this.plugin.saveSettings();
 					}),
 			);

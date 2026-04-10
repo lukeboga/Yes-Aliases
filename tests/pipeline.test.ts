@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-	decidePropagate,
+	decidePush,
 	decideRemove,
 	decideRewrite,
 	extractLinkPath,
 	isCanonicalAlias,
 	isAliasMatch,
 	type LinkInput,
-	type PropagateInput,
+	type PushInput,
 	type RemoveInput,
 } from "../src/pipeline";
 
@@ -211,7 +211,7 @@ describe("isAliasMatch", () => {
 	});
 });
 
-function makePropagateInput(overrides: Partial<PropagateInput> = {}): PropagateInput {
+function makePushInput(overrides: Partial<PushInput> = {}): PushInput {
 	return {
 		original: "[[some-file|Jane]]",
 		hasExplicitDisplayText: true,
@@ -222,17 +222,17 @@ function makePropagateInput(overrides: Partial<PropagateInput> = {}): PropagateI
 	};
 }
 
-describe("decidePropagate", () => {
+describe("decidePush", () => {
 	it("rewrites a historical-alias display text to aliases[0]", () => {
-		expect(decidePropagate(makePropagateInput())).toEqual({
+		expect(decidePush(makePushInput())).toEqual({
 			action: "rewrite",
 			newText: "[[some-file|Jane Smith]]",
 		});
 	});
 
 	it("skips when display text already equals canonical", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file|Jane Smith]]",
 				currentDisplayText: "Jane Smith",
 			}),
@@ -241,8 +241,8 @@ describe("decidePropagate", () => {
 	});
 
 	it("skips when display text is prose (no alias match)", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file|click here]]",
 				currentDisplayText: "click here",
 			}),
@@ -251,18 +251,18 @@ describe("decidePropagate", () => {
 	});
 
 	it("skips when target has no aliases", () => {
-		const result = decidePropagate(makePropagateInput({ aliases: [] }));
+		const result = decidePush(makePushInput({ aliases: [] }));
 		expect(result).toEqual({ action: "skip", reason: "no-alias" });
 	});
 
 	it("skips when canonical is empty string", () => {
-		const result = decidePropagate(makePropagateInput({ aliases: ["", "Jane"] }));
+		const result = decidePush(makePushInput({ aliases: ["", "Jane"] }));
 		expect(result).toEqual({ action: "skip", reason: "no-alias" });
 	});
 
 	it("rewrites bare link `[[some-file]]` to `[[some-file|Jane Smith]]`", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file]]",
 				hasExplicitDisplayText: false,
 				currentDisplayText: null,
@@ -275,8 +275,8 @@ describe("decidePropagate", () => {
 	});
 
 	it("preserves heading anchor on rewrite", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file#Heading|Jane]]",
 			}),
 		);
@@ -287,8 +287,8 @@ describe("decidePropagate", () => {
 	});
 
 	it("preserves block-ref anchor on rewrite", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file#^abc|Jane]]",
 			}),
 		);
@@ -299,8 +299,8 @@ describe("decidePropagate", () => {
 	});
 
 	it("rewrites case-insensitively to canonical casing", () => {
-		const result = decidePropagate(
-			makePropagateInput({
+		const result = decidePush(
+			makePushInput({
 				original: "[[some-file|jane smith]]",
 				currentDisplayText: "jane smith",
 				caseInsensitive: true,

@@ -1,6 +1,6 @@
 import type { App, Editor, TFile } from "obsidian";
-import { decideRewrite, type SkipReason } from "./pipeline";
-import { resolveAlias } from "./alias-resolver";
+import { decideRewrite, isAliasMatch, type SkipReason } from "./pipeline";
+import { getAllAliases, resolveAlias } from "./alias-resolver";
 import {
 	buildExcludedRanges,
 	findFrontmatterLinkOffset,
@@ -79,6 +79,28 @@ export function skipReasonMessage(reason: SkipReason): string {
 }
 
 /**
+ * Enhanced skip message for cursor-scope update commands. When the skip
+ * reason is "has-display-text", checks whether the display text matches a
+ * historical alias and surfaces a migration hint if so.
+ */
+function cursorSkipMessage(
+	reason: SkipReason,
+	currentDisplayText: string | null,
+	targetFile: TFile | null,
+	app: App,
+	settings: YesAliasesSettings,
+): string {
+	if (reason !== "has-display-text" || !currentDisplayText || !targetFile) {
+		return skipReasonMessage(reason);
+	}
+	const aliases = getAllAliases(app, targetFile);
+	if (isAliasMatch(currentDisplayText, aliases, settings.caseInsensitiveAliasMatch)) {
+		return `Skipped — showing historical alias "${currentDisplayText}". Run "Push aliases from file" to migrate to "${aliases[0]}"`;
+	}
+	return skipReasonMessage(reason);
+}
+
+/**
  * Update the single wikilink under the cursor.
  * Returns `{ found: false }` if the cursor is not on a wikilink, allowing
  * callers to fall back to other strategies (e.g. target-matching).
@@ -108,12 +130,15 @@ export function updateLinkUnderCursor(
 			const excludedRanges = buildExcludedRanges(cache.sections);
 			if (!isLinkExcluded(link, content, excludedRanges, settings)) {
 				const linkpath = getLinkpathForResolution(link);
-				const { alias } = resolveAlias(app, linkpath, file.path);
+				const { alias, targetFile } = resolveAlias(app, linkpath, file.path);
 				const input = toLinkInput(link, alias, settings);
 				const decision = decideRewrite(input);
 
 				if (decision.action === "skip") {
-					return { found: true, message: skipReasonMessage(decision.reason) };
+					return {
+						found: true,
+						message: cursorSkipMessage(decision.reason, input.currentDisplayText, targetFile, app, settings),
+					};
 				}
 
 				const from = editor.offsetToPos(link.position.start.offset);
@@ -146,12 +171,15 @@ export function updateLinkUnderCursor(
 				if (cursorOffset < offset.start || cursorOffset > offset.end) continue;
 
 				const linkpath = getLinkpathFromFrontmatterLink(link);
-				const { alias } = resolveAlias(app, linkpath, file.path);
+				const { alias, targetFile } = resolveAlias(app, linkpath, file.path);
 				const input = toLinkInput(link, alias, settings);
 				const decision = decideRewrite(input);
 
 				if (decision.action === "skip") {
-					return { found: true, message: skipReasonMessage(decision.reason) };
+					return {
+						found: true,
+						message: cursorSkipMessage(decision.reason, input.currentDisplayText, targetFile, app, settings),
+					};
 				}
 
 				const from = editor.offsetToPos(offset.start);

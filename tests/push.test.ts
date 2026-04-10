@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
-	propagateFile,
-	propagateFolder,
-	propagateVault,
-	type PropagateStats,
-} from "../src/propagate";
+	pushFile,
+	pushFolder,
+	pushVault,
+	type PushStats,
+} from "../src/push";
 import type { YesAliasesSettings } from "../src/settings";
 import {
 	parseFrontMatterAliases,
@@ -29,12 +29,12 @@ function makeSettings(partial: Partial<YesAliasesSettings> = {}): YesAliasesSett
 		ignoredFolders: [],
 		preserveHeadingAndBlockAnchors: false,
 		caseInsensitiveAliasMatch: false,
-		autoPropagateNewNoteAliases: true,
-		autoPropagateAllAliasChanges: false,
-		autoPropagateNoticeThreshold: 5,
+		autoPushNewNoteAliases: true,
+		autoPushAllAliasChanges: false,
+		autoPushNoticeThreshold: 5,
 		aliasesKeepCount: 1,
 		compressWarnInsteadOfBlock: false,
-		removeIgnoresPropagationSafety: false,
+		removeIgnoresPushSafety: false,
 		...partial,
 	};
 }
@@ -44,7 +44,7 @@ beforeEach(() => {
 	(parseFrontMatterStringArray as any).mockReset();
 });
 
-describe("propagateFile", () => {
+describe("pushFile", () => {
 	it("rewrites a historical-alias backlink in a closed source file", async () => {
 		const targetFile = makeTFile("people/jane.md");
 		const sourceFile = makeTFile("notes/a.md");
@@ -92,7 +92,7 @@ describe("propagateFile", () => {
 
 		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith", "Jane"]);
 
-		const stats: PropagateStats = await propagateFile(app, targetFile, makeSettings(), {
+		const stats: PushStats = await pushFile(app, targetFile, makeSettings(), {
 			source: "manual",
 		});
 
@@ -115,7 +115,7 @@ describe("propagateFile", () => {
 		(parseFrontMatterAliases as any).mockReturnValue(null);
 		(parseFrontMatterStringArray as any).mockReturnValue(null);
 
-		const stats = await propagateFile(app, targetFile, makeSettings(), { source: "manual" });
+		const stats = await pushFile(app, targetFile, makeSettings(), { source: "manual" });
 		expect(stats.linksRewritten).toBe(0);
 		expect(stats.filesTouched).toBe(0);
 	});
@@ -142,7 +142,7 @@ describe("propagateFile", () => {
 		} as any;
 		(parseFrontMatterAliases as any).mockReturnValue(["Jane Smith"]);
 
-		const stats = await propagateFile(
+		const stats = await pushFile(
 			app,
 			targetFile,
 			makeSettings({ ignoredFolders: ["_archive"] }),
@@ -153,8 +153,8 @@ describe("propagateFile", () => {
 	});
 });
 
-describe("propagateFolder", () => {
-	it("propagates each markdown file in the folder as a target", async () => {
+describe("pushFolder", () => {
+	it("pushes each markdown file in the folder as a target", async () => {
 		const folder = new TFolder();
 		folder.path = "people";
 		folder.name = "people";
@@ -180,7 +180,7 @@ describe("propagateFolder", () => {
 		(parseFrontMatterAliases as any).mockReturnValue(null);
 		(parseFrontMatterStringArray as any).mockReturnValue(null);
 
-		const stats = await propagateFolder(app, folder, makeSettings(), {
+		const stats = await pushFolder(app, folder, makeSettings(), {
 			source: "manual",
 		});
 		expect(stats.targetsProcessed).toBe(2);
@@ -212,14 +212,14 @@ describe("propagateFolder", () => {
 		(parseFrontMatterAliases as any).mockReturnValue(null);
 		(parseFrontMatterStringArray as any).mockReturnValue(null);
 
-		const stats = await propagateFolder(app, folder, makeSettings(), {
+		const stats = await pushFolder(app, folder, makeSettings(), {
 			source: "manual",
 		});
 		expect(stats.targetsProcessed).toBe(1);
 	});
 });
 
-describe("propagateVault", () => {
+describe("pushVault", () => {
 	it("iterates every markdown file and skips targets in ignoredFolders", async () => {
 		const a = makeTFile("a.md");
 		const b = makeTFile("_archive/b.md");
@@ -241,7 +241,7 @@ describe("propagateVault", () => {
 		(parseFrontMatterAliases as any).mockReturnValue(null);
 		(parseFrontMatterStringArray as any).mockReturnValue(null);
 
-		const stats = await propagateVault(
+		const stats = await pushVault(
 			app,
 			makeSettings({ ignoredFolders: ["_archive"] }),
 			{ source: "manual" },

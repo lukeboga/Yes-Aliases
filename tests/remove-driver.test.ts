@@ -31,12 +31,12 @@ function makeSettings(partial: Partial<YesAliasesSettings> = {}): YesAliasesSett
 		ignoredFolders: [],
 		preserveHeadingAndBlockAnchors: false,
 		caseInsensitiveAliasMatch: false,
-		autoPropagateNewNoteAliases: true,
-		autoPropagateAllAliasChanges: false,
-		autoPropagateNoticeThreshold: 5,
+		autoPushNewNoteAliases: true,
+		autoPushAllAliasChanges: false,
+		autoPushNoticeThreshold: 5,
 		aliasesKeepCount: 1,
 		compressWarnInsteadOfBlock: false,
-		removeIgnoresPropagationSafety: false,
+		removeIgnoresPushSafety: false,
 		...partial,
 	};
 }
@@ -277,7 +277,7 @@ describe("removeLinksInFile", () => {
 			app,
 			editor,
 			sourceFile,
-			makeSettings({ removeIgnoresPropagationSafety: true }),
+			makeSettings({ removeIgnoresPushSafety: true }),
 		);
 		expect(stats.updated).toBe(1);
 	});

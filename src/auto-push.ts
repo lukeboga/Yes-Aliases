@@ -22,24 +22,24 @@ function arraysEqual(a: string[], b: string[]): boolean {
 
 /**
  * Narrow host interface for the manager. Avoids importing the full
- * `YesAliasesPlugin` class (which would require its `propagate` method
+ * `YesAliasesPlugin` class (which would require its `push` method
  * stub to exist before Phase 7 wires it up).
  */
-export interface AutoPropagationHost {
+export interface AutoPushHost {
 	app: App;
 	settings: YesAliasesSettings;
 	registerEvent(eventRef: EventRef): void;
 	registerInterval(id: number): number;
-	propagate(file: TFile, source: "auto" | "manual"): Promise<void>;
+	push(file: TFile, source: "auto" | "manual"): Promise<void>;
 }
 
 function isMarkdownFile(f: TAbstractFile): f is TFile {
 	return f instanceof TFile && f.extension === "md";
 }
 
-/** Lifecycle + in-memory state for automatic alias propagation. */
-export class AutoPropagationManager {
-	private plugin: AutoPropagationHost;
+/** Lifecycle + in-memory state for automatic alias pushing. */
+export class AutoPushManager {
+	private plugin: AutoPushHost;
 
 	/** Lazy snapshot of last-observed aliases per file. Never persisted. */
 	private aliasSnapshot: Map<string, string[]> = new Map();
@@ -54,7 +54,7 @@ export class AutoPropagationManager {
 	private debounceTimers: Map<string, ReturnType<typeof setTimeout>> =
 		new Map();
 
-	constructor(plugin: AutoPropagationHost) {
+	constructor(plugin: AutoPushHost) {
 		this.plugin = plugin;
 	}
 
@@ -64,7 +64,7 @@ export class AutoPropagationManager {
 		// Defer create-event registration until after Obsidian's initial vault
 		// index has finished firing 'create' events for every existing file.
 		// Without this gate, recentlyCreated is polluted with all pre-existing
-		// files at plugin load, causing autoPropagateNewNoteAliases to treat
+		// files at plugin load, causing autoPushNewNoteAliases to treat
 		// existing notes as if they were freshly created.
 		app.workspace.onLayoutReady(() => {
 			this.plugin.registerEvent(
@@ -128,7 +128,7 @@ export class AutoPropagationManager {
 		};
 	}
 
-	// ─── Handlers (stubs; filled out in subsequent tasks) ───
+	// ─── Handlers ───
 
 	private onCreate(file: TAbstractFile): void {
 		if (!isMarkdownFile(file)) return;
@@ -205,8 +205,8 @@ export class AutoPropagationManager {
 		const newAliases = getAllAliases(this.plugin.app, file);
 		const prevAliases = this.aliasSnapshot.get(file.path);
 
-		// Lazy seed — first observation never propagates via the general
-		// branch, but may propagate via the new-note branch.
+		// Lazy seed — first observation never pushes via the general
+		// branch, but may push via the new-note branch.
 		if (prevAliases === undefined) {
 			this.aliasSnapshot.set(file.path, newAliases);
 
@@ -216,8 +216,8 @@ export class AutoPropagationManager {
 				newAliases[0] !== ""
 			) {
 				this.recentlyCreated.delete(file.path);
-				if (this.plugin.settings.autoPropagateNewNoteAliases) {
-					this.triggerPropagate(file);
+				if (this.plugin.settings.autoPushNewNoteAliases) {
+					this.triggerPush(file);
 				}
 			}
 			return;
@@ -236,20 +236,20 @@ export class AutoPropagationManager {
 			(prevAliases.length === 0 || prevAliases[0] === "")
 		) {
 			this.recentlyCreated.delete(file.path);
-			if (this.plugin.settings.autoPropagateNewNoteAliases) {
-				this.triggerPropagate(file);
+			if (this.plugin.settings.autoPushNewNoteAliases) {
+				this.triggerPush(file);
 			}
 			return;
 		}
 
 		// General branch.
-		if (this.plugin.settings.autoPropagateAllAliasChanges) {
-			this.triggerPropagate(file);
+		if (this.plugin.settings.autoPushAllAliasChanges) {
+			this.triggerPush(file);
 		}
 	}
 
-	private triggerPropagate(file: TFile): void {
-		void this.plugin.propagate(file, "auto");
+	private triggerPush(file: TFile): void {
+		void this.plugin.push(file, "auto");
 	}
 
 	private pruneExpired(): void {

@@ -7,7 +7,7 @@ An Obsidian plugin for the complete alias lifecycle of wikilinks: pull, push, co
 Obsidian wikilinks default to showing the raw filename, which for timestamped or ID-based naming schemes (`20240315-mtg`, `2026-04-02-1430-00000`) is unreadable. Yes Aliases manages the display text of those links across four operations:
 
 - **Pull** — update a link's display text to match the target note's `aliases[0]` (`[[20240315-mtg]]` → `[[20240315-mtg|Q1 review]]`)
-- **Push (propagate)** — when a target note's alias changes, propagate the new value outward to every backlink across the vault
+- **Push** — when a target note's alias changes, push the new value outward to every backlink across the vault
 - **Compress** — trim a note's `aliases` array while protecting backlinks from being orphaned
 - **Remove** — strip display text from links (the inverse of pull)
 
@@ -17,19 +17,21 @@ Each command operates at one or more scope levels — cursor, file, folder, vaul
 
 **Alias lifecycle commands**
 - **Pull** — update link display text to match the target note's alias
-- **Push** — propagate a target's alias change outward to backlinks across the vault
+- **Push** — push a target's alias change outward to backlinks across the vault
 - **Compress** — trim a note's `aliases` array while protecting backlinks from orphaning
 - **Remove** — strip display text from links (inverse of pull)
 
 **Scope levels** — cursor, file, folder, vault (where semantically meaningful)
 
-**Automatic updates** — opt-in: auto-propagate when a new note gets its first alias (on by default), or whenever any note's alias changes (off by default)
+**Automatic updates** — opt-in: auto-push when a new note gets its first alias (on by default), or whenever any note's alias changes (off by default)
 
 **Inclusive link coverage** — all markdown-target wikilinks participate, including heading links and block references (`[[Note#Heading]]`, `[[Note#^block-id]]`). Opt-out via one setting for users who prefer Obsidian's native anchor rendering. (Embeds are not yet rewritten — see "Known limitations" below; embed support is scheduled for v0.1.1.)
 
-## How propagate and remove stay safe
+## How push and remove stay safe
 
-Both commands only touch display text that matches an entry in the target note's `aliases` array (current or historical). Prose display text like `[[Note|click here to read more]]` is always preserved — "click here to read more" isn't an alias of the target, so the plugin leaves it alone.
+Both push and remove only touch display text that matches an entry in the target note's `aliases` array (current or historical). Prose display text like `[[Note|click here to read more]]` is always preserved — "click here to read more" isn't an alias of the target, so the plugin leaves it alone.
+
+Pull (update) is more conservative: it respects the "Overwrite existing display text" setting and skips links that already have any display text when that setting is off.
 
 This is why keeping historical aliases in the array matters: when you change a note's canonical alias from "Old Name" to "New Name", leave "Old Name" as `aliases[1]` and the plugin can recognize and migrate any remaining backlinks that still show "Old Name". Once migration is complete, use "Compress aliases" to trim the historical entries.
 
@@ -45,36 +47,36 @@ If your filenames are already descriptive, you may prefer Obsidian's native rend
 
 | Command | Scope | Access |
 | --- | --- | --- |
-| Update link under cursor | Single link at cursor | Command palette |
+| Update link alias at cursor | Single link at cursor | Command palette |
 | Update link alias | Single link (body or source-mode YAML); all frontmatter links to target (Properties UI) | Right-click a wikilink |
-| Update all links in current file | All links in active file | Command palette |
-| Update all links in folder | All files in folder (recursive) | File explorer context menu |
-| Update all links in vault | All files in vault | Command palette |
+| Update link aliases in file | All links in active file | Command palette |
+| Update link aliases in folder | All files in folder (recursive) | File explorer context menu |
+| Update link aliases in vault | All files in vault | Command palette |
 
-### Push (propagate a target's alias outward)
+### Push (push a target's alias outward)
 
 | Command | Scope | Access |
 | --- | --- | --- |
-| Propagate aliases for current file | Backlinks to the active file | Command palette |
-| Propagate aliases for files in folder | Backlinks to every file in folder (recursive) | File explorer context menu |
-| Propagate aliases across vault | Backlinks to every file in vault | Command palette |
+| Push aliases from file | Backlinks to the active file | Command palette |
+| Push aliases from folder | Backlinks to every file in folder (recursive) | File explorer context menu |
+| Push aliases in vault | Backlinks to every file in vault | Command palette |
 
 ### Compress (trim the `aliases` array)
 
 | Command | Scope | Access |
 | --- | --- | --- |
-| Compress aliases in current file | Active file — keeps "Main aliases to keep" leading entries | Command palette |
-| Compress aliases to main alias | Active file — always trims to 1 | Command palette |
+| Compress aliases in file | Active file — keeps "Main aliases to keep" leading entries | Command palette |
+| Compress to main alias | Active file — always trims to 1 | Command palette |
 
-If any backlink in the vault still shows an alias that compress would remove, the plugin refuses (or warns, depending on settings) so the link doesn't become orphaned.
+If any backlink in the vault still shows an alias that compress would remove, the plugin refuses (or warns, depending on settings) and suggests running "Push aliases in vault" first.
 
 ### Remove (strip display text)
 
 | Command | Scope | Access |
 | --- | --- | --- |
-| Remove link alias under cursor | Single link at cursor | Command palette |
+| Remove link alias at cursor | Single link at cursor | Command palette |
 | Remove link alias | Single link (body or source-mode YAML); all frontmatter links to target (Properties UI) | Right-click a wikilink |
-| Remove link aliases in current file | All links in active file | Command palette |
+| Remove link aliases in file | All links in active file | Command palette |
 | Remove link aliases in folder | All files in folder (recursive) | File explorer context menu |
 | Remove link aliases in vault | All files in vault | Command palette |
 
@@ -94,14 +96,14 @@ If any backlink in the vault still shows an alias that compress would remove, th
 | Setting | Default | Description |
 | --- | --- | --- |
 | Auto-update links when a new note gets its first alias | On | When you create a new note and give it an alias, links to that note in other notes are updated automatically. Only affects notes created during the current Obsidian session. |
-| Auto-update links whenever any note's alias changes | Off | When you change a note's alias, links to that note are updated automatically. ⚠ Can touch many files at once — leave off until you've tried the manual "Propagate aliases" commands first. |
+| Auto-update links whenever any note's alias changes | Off | When you change a note's alias, links to that note are updated automatically. ⚠ Can touch many files at once — leave off until you've tried the manual "Push aliases" commands first. |
 | Quiet mode: only notify on larger updates | 5 | When automatic updates touch this many files or fewer, no notice is shown. Set to 0 to always show a notice. |
 
 ### Compress aliases
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| Main aliases to keep | 1 | When you run "Compress aliases in current file", this many leading entries of the `aliases` array are kept and the rest are removed. The "Compress aliases to main alias" command always trims to 1 regardless. |
+| Main aliases to keep | 1 | When you run "Compress aliases in file", this many leading entries of the `aliases` array are kept and the rest are removed. The "Compress to main alias" command always trims to 1 regardless. |
 | Warn instead of blocking when compress would orphan links | Off | When enabled, the plugin shows a warning dialog instead of refusing when compress would orphan links. ⚠ Compressing with orphans strands those links — leave off unless you know what you're doing. |
 
 ### Remove link aliases
@@ -139,11 +141,11 @@ The plugin skips the following and leaves them unchanged:
 
 ## Known limitations
 
-**Embeds are not yet rewritten.** v0.1.0 ships alias propagation for wikilinks only — including the inclusive heading and block reference variants — but embeds (`![[Note]]`, `![[Note#Heading]]`, `![[Note#^block]]`, `![[Note|Caption]]`) are not touched by any command. The architecture supports them and the fix is mechanical; embed support is scheduled for v0.1.1. The "Preserve heading and block anchors" setting will apply to heading and block embeds when v0.1.1 lands, with no migration required.
+**Embeds are not yet rewritten.** v0.1.0 ships alias operations for wikilinks only — including the inclusive heading and block reference variants — but embeds (`![[Note]]`, `![[Note#Heading]]`, `![[Note#^block]]`, `![[Note|Caption]]`) are not touched by any command. The architecture supports them and the fix is mechanical; embed support is scheduled for v0.1.1. The "Preserve heading and block anchors" setting will apply to heading and block embeds when v0.1.1 lands, with no migration required.
 
 **Right-clicking a frontmatter wikilink in the Properties UI updates every frontmatter link to that target, not just the clicked one.** If a note has multiple frontmatter wikilinks pointing to the same target file (e.g. the same target listed twice in a `links` property), right-clicking any of them and selecting "Update link alias" or "Remove link alias" rewrites all of them in one operation. Body links to the same target are not affected.
 
-This is because Obsidian's `link-context-menu` event reports only the target file, not which property field was clicked. There is no public way to map the right-click back to a specific frontmatter link occurrence. Per-link semantics still work for body links (they use the cursor position) and for source-mode YAML wikilinks (they use the click coordinates). Use the "Update link under cursor" command in source mode if you need to update a single specific frontmatter link.
+This is because Obsidian's `link-context-menu` event reports only the target file, not which property field was clicked. There is no public way to map the right-click back to a specific frontmatter link occurrence. Per-link semantics still work for body links (they use the cursor position) and for source-mode YAML wikilinks (they use the click coordinates). Use the "Update link alias at cursor" command in source mode if you need to update a single specific frontmatter link.
 
 ## Contributing
 
