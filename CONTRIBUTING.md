@@ -1,6 +1,6 @@
 # Contributing to Yes Aliases
 
-Yes Aliases is a single-purpose Obsidian plugin that propagates `aliases[0]` from target file frontmatter into wikilink display text. This document covers development setup, architecture, and conventions.
+Yes Aliases is a single-purpose Obsidian plugin that manages wikilink display text from note aliases. This document covers development setup, architecture, and conventions.
 
 ## Dev Setup
 
