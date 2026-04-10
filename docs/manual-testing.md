@@ -765,4 +765,87 @@ Prose display (should be preserved): [[target|some prose]]
 
 …the line indices are 0,2,4,6,8 (evens are content, odds are blank). Character offsets inside each link are roughly `ch 20`, `ch 35`, `ch 35`, `ch 45` for lines 2/4/6/8 respectively (depends on the exact target path length).
 
+### 10.11 Command IDs for `executeCommandById`
+
+As of v0.1.0, the registered command IDs are:
+
+| Command ID | Scope | Palette |
+|---|---|---|
+| `yes-aliases:update-link-under-cursor` | cursor | yes |
+| `yes-aliases:update-links-in-file` | file | yes |
+| `yes-aliases:update-links-in-vault` | vault | yes |
+| `yes-aliases:update-links-in-folder` | folder | file-menu only |
+| `yes-aliases:propagate-aliases-file` | file | yes |
+| `yes-aliases:propagate-aliases-vault` | vault | yes |
+| `yes-aliases:compress-aliases-file` | file | yes |
+| `yes-aliases:compress-aliases-file-to-main` | file | yes |
+| `yes-aliases:remove-link-alias-under-cursor` | cursor | yes |
+| `yes-aliases:remove-link-aliases-in-file` | file | yes |
+| `yes-aliases:remove-link-aliases-in-vault` | vault | yes |
+
+Folder-scope propagate and remove are file-menu items only (no command ID for `executeCommandById`). Drive them via the synthetic Menu shim (§10.5).
+
+**Common pitfall:** The propagate-file command ID is `propagate-aliases-file`, NOT `propagate-aliases-from-file`. The command names don't always match the notice text. Always verify with:
+
+```js
+Object.keys(app.commands.commands).filter(k => k.startsWith('yes-aliases'))
+```
+
+### 10.12 Direct plugin method calls
+
+When `executeCommandById` requires a specific active file or editor state that's hard to set up, call the plugin method directly:
+
+```js
+const plugin = app.plugins.plugins['yes-aliases'];
+const tf = app.vault.getAbstractFileByPath('path/to/target.md');
+await plugin.propagate(tf, 'manual');
+```
+
+This bypasses the command's `editorCallback` / `checkCallback` gating and executes the operation directly. Useful for propagate-from-file when you need to control which file is the propagation target.
+
+### 10.13 Compress interlock testing
+
+The compress interlock refuses when backlinks still use aliases that would be stripped. Testing the full interlock lifecycle:
+
+1. **Refuse (strict):** Reset fixtures to canonical state (source has historical-alias backlink). Run compress on target. Expect refuse notice, target unchanged.
+2. **Success after propagate:** Propagate from target first (migrates all historical backlinks to canonical). Then compress. Expect success — alias removed.
+3. **Warn modal (when `compressWarnInsteadOfBlock=true`):** Enable setting, reset fixtures, run compress. Modal appears with "Cancel" + "Strip anyway" buttons. Capture modal via `document.querySelector('.modal-container')`.
+4. **Compress-to-main ignores `aliasesKeepCount`:** Set `aliasesKeepCount=2`, run `compress-aliases-file-to-main`. Always trims to 1 regardless.
+
+### 10.14 Auto-propagation testing (post-BUG-#8 fix)
+
+Auto-propagation tests are only meaningful on a build with the `onLayoutReady` fix (commit `450559d`+). On pre-fix builds, `recentlyCreated` is polluted with every pre-existing file and results are unreliable.
+
+**Baseline check:** After `obsidian plugin:reload id=yes-aliases`, verify `[...ap.recentlyCreated.keys()].length === 0`. Any non-zero count (excluding files genuinely created this session) indicates the fix isn't active.
+
+**New-note auto-propagation (8a pattern):**
+1. Create a backlinker with a bare link to a not-yet-existing target
+2. Create the target note with aliases via `app.vault.create`
+3. Wait 4+ seconds (debounce + propagation)
+4. Read backlinker — bare link should have alias display text
+
+**Alias-change auto-propagation (8b pattern):**
+1. Enable `autoPropagateAllAliasChanges`
+2. Reset fixtures, wait 4+ seconds for alias snapshot to seed
+3. Modify target's `aliases[0]` via `app.vault.modify`
+4. Wait 5+ seconds (debounce + propagation)
+5. Read source — canonical and bare links should show new alias
+
+**Important:** Always restore settings and fixtures in a try/finally pattern.
+
+### 10.15 Heading and block anchor testing
+
+Build a fixture with 5 link types to the same target: plain `[[target]]`, heading `[[target#Heading]]`, block `[[target#^block1]]`, heading-aliased `[[target#Heading|OldAlias]]`, block-aliased `[[target#^block1|OldAlias]]`.
+
+- **`preserveHeadingAndBlockAnchors=false` (default):** All 5 rewrite. Anchors are preserved in the output: `[[target#Heading|NewAlias]]`.
+- **`preserveHeadingAndBlockAnchors=true`:** Only the plain link rewrites. All heading/block variants (bare and aliased) are skipped.
+
+### 10.16 Frontmatter link testing
+
+Build a fixture with wikilinks in YAML frontmatter properties (quoted): `related: "[[target]]"`, `historical: "[[target|OldAlias]]"`, etc. All three operations (update, propagate, remove) should process FM links identically to body links, with the same safe-rewrite rules applied. FM links route through `vault.process` in both source and Live Preview modes (the session-010 FM-LP fix).
+
+### 10.17 Shim noise in `dev:errors`
+
+The synthetic Menu shim (§10.5) produces `TypeError: e.setSectionSubmenu is not a function` entries in `dev:errors`. These come from Obsidian's own internal listeners on the `file-menu` / `editor-menu` workspace events — not from the plugin. The shim stubs `setSectionSubmenu` on menu *items*, but Obsidian's listeners call it on the *menu object* itself. This is test-scaffold noise only and can be safely ignored. If `dev:errors` shows errors from plugin code paths (stack traces in `main.js` or `src/`), those are real.
+
 ---
