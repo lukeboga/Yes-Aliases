@@ -7,17 +7,7 @@ For older entries, see [changelog archive](changelog/archive/).
 
 ## [Unreleased]
 
-### Changed
-- **Renamed "propagate" to "push" everywhere** — command names, IDs, settings keys, internal code, documentation. "Push aliases from file" / "Push aliases in vault" replace the former "Propagate" commands. Auto-push settings keys renamed accordingly (`autoPushNewNoteAliases`, `autoPushAllAliasChanges`, `autoPushNoticeThreshold`). No migration needed — v0.1.0 has not shipped
-- **Command names normalized** to template `{Verb} link alias(es) {prep} {scope}` — dropped "current", normalized prepositions, singular for cursor scope, plural for batch scopes
-- **Manifest description rewritten** to verb-led plain English per Obsidian submission requirements
-
-### Fixed
-- Bulk notice plural mismatches: "1 files — 1 links updated" now correctly shows "1 file — 1 link updated"
-- Compress refuse notice: "still show" → "still shows" for singular link count
-- Cursor update skip notice now distinguishes historical aliases from custom prose text and shows a migration hint: `Skipped — showing historical alias "Old". Run "Push aliases from file" to migrate to "New"`
-
-## [0.1.0] - 2026-04-09
+## [0.1.0] - 2026-04-10
 
 ### Added
 - Alias push commands: "Push aliases from file" and "Push aliases in vault" (palette), "Push aliases from folder" (file explorer context menu)
@@ -37,6 +27,9 @@ For older entries, see [changelog archive](changelog/archive/).
 
 ### Changed
 - Link-type boundary rules are now inclusive by default for wikilinks: heading links and block references (`[[Note#Heading]]`, `[[Note#^block-id]]`) participate in pull, push, and remove operations. Enable "Preserve heading and block anchors" in settings to restore Obsidian's native anchor rendering for these variants.
+- **Renamed "propagate" to "push" everywhere** — command names, IDs, settings keys, internal code, documentation. "Push aliases from file" / "Push aliases in vault" replace the former "Propagate" commands
+- **Command names normalized** to template `{Verb} link alias(es) {prep} {scope}` — dropped "current", normalized prepositions, singular for cursor scope, plural for batch scopes
+- **Manifest description rewritten** to verb-led plain English per Obsidian submission requirements
 
 ### Known limitations
 - **Embeds (`![[..]]`, `![[..#Heading]]`, `![[..#^block]]`, `![[..|Caption]]`) are not yet rewritten by any command.** The inclusive-boundary architecture is in place but the writers do not yet iterate the embed cache. Embed support is scheduled for v0.1.1; the "Preserve heading and block anchors" setting will then apply to heading and block embeds in addition to their wikilink counterparts. Tracked in `project/planning/backlog.md`.
@@ -50,3 +43,6 @@ For older entries, see [changelog archive](changelog/archive/).
 - Frontmatter wikilinks no longer silently fail to rewrite in Live Preview mode. Affects pull-update ("Update all links in current file"), remove ("Remove link aliases in current file"), and the Properties UI right-click fallbacks for both. All frontmatter rewrites now route through `vault.process` regardless of editor mode; the editor view auto-syncs from disk
 - Alias resolution now handles `alias` (singular) frontmatter key via `parseFrontMatterStringArray` fallback
 - "Update link under cursor" notice now says "Skipped — display text already set" instead of misleading "Link already up to date" when a link has existing display text and overwrite is off
+- Bulk notice plural mismatches: "1 files — 1 links updated" now correctly shows "1 file — 1 link updated"
+- Compress refuse notice: "still show" → "still shows" for singular link count
+- Cursor update skip notice now distinguishes historical aliases from custom prose text and shows a migration hint
